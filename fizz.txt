@@ -1,0 +1,48 @@
+cf cb c0 cl ct f b n f2 b2 i j k e
+
+set 70 cf
+set 66 cb
+set 48 c0
+set 10 cl
+
+set 1 f
+set 1 b
+
+set 1  i
+input j
+
+while j
+    set 1 n
+
+    copy f f2
+    sub 3 f2
+    ifelse f2 e
+    else f2 e
+        print cf
+        clear n
+        clear f
+    endifelse f2 e
+
+    copy b b2
+    sub 5 b2
+    ifelse b2 e
+    else b2 e
+        print cb
+        clear n
+        clear b
+    endifelse b2 e
+
+    if n
+        print c0
+    endif n
+
+    print cl
+
+    inc b
+    inc f
+
+    inc i
+    dec j
+endwhile j
+
+end

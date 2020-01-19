@@ -1,0 +1,35 @@
+w i e t result new  odd even c
+
+# loads integer to result
+
+set 1 w
+while w
+    input i
+    
+    # change here  10 to any charcode
+    sub 10  i
+
+    ifelse i e
+        clear new
+
+        set 10  t
+        while t
+            copyadd result  new
+
+            dec t
+        endwhile t
+
+        # change hero  38 to 48 minus selection
+        sub 38  i
+
+        moveadd i  new
+        copy new  result
+    else i e
+        clear w
+    endifelse i e
+endwhile w
+
+
+print result
+
+end
