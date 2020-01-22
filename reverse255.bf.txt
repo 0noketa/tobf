@@ -1,0 +1,22 @@
+# reads 255 bytes and writes in reversed order
+# memory layout  0 0  1 old_input  1 old_input  rest current_input  rest_minus_1 next_input  0 0
+
+bf >>
+bf >++++ ++++ ++++ +++[<++++ ++++ ++++ ++++ +>-]
+bf <
+
+bf [
+bf    >,<
+bf    [>>+<<-]
+bf    +
+bf    >>-
+bf ]
+
+bf <<
+bf [
+bf    >.<
+bf    <<
+bf ]
+
+end
+

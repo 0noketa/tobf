@@ -1,0 +1,31 @@
+h c s w t
+# h = 72
+# c =                      44
+# w =     101 108 108 111         119 111 114 108 100
+# s =                          32                      33
+add 44 h c w
+add 28 h w s t
+add 4 s
+moveadd t w
+inc w
+# h=72; c=44; s=28; w=101
+
+print h w
+add 7 w
+print w w
+add 3 w
+print w c s
+add 8 w
+print w
+sub 8 w
+print w
+add 3 w
+print w
+sub 6 w
+print w
+sub 8 w
+print w
+inc s
+print s
+
+end

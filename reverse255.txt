@@ -1,0 +1,35 @@
+size rest continue continue2 n e c
+
+# hand_written bf should be better than this
+# warrning: dont run on slow implementation or takes long time
+
+mem_init 255
+
+set 255 rest
+inc continue
+while continue
+    copy rest n
+    ifelse n e
+        mem_set input size
+        inc size
+        dec rest
+
+        inc continue2
+    else n e
+        dec continue
+    endifelse n e
+    
+    if continue2
+        inc continue
+    endif continue2
+endwhile continue
+
+while size
+    dec size
+    mem_set print size
+endwhile size
+
+set 10 c
+print c
+
+end

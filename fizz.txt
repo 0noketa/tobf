@@ -1,17 +1,25 @@
 cf cb c0 cl ct f b n f2 b2 i j k e
 
-set 70 cf
-set 66 cb
-set 48 c0
+# set 70 cf
+# set 66 cb
+# set 48 c0
+set 48 cf cb c0
+add 18 cf cb
+add 4 cf
 set 10 cl
 
+# f: 0 to 3 (includes 3)
+# b: 0 to 5 (includes 5)
 set 1 f
 set 1 b
 
-set 1  i
+# i: current number
+# j: rest of numbers
+set 0  i
 input j
 
 while j
+    # is not fizz nor buzz
     set 1 n
 
     copy f f2

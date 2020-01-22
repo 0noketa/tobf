@@ -1,4 +1,4 @@
-w i e t result new  odd even c
+w i e new result
 
 # loads integer to result
 
@@ -12,18 +12,19 @@ while w
     ifelse i e
         clear new
 
-        set 10  t
-        while t
+        set 10  w
+        while w
             copyadd result  new
 
-            dec t
-        endwhile t
+            dec w
+        endwhile w
 
         # change hero  38 to 48 minus selection
         sub 38  i
 
         moveadd i  new
         copy new  result
+        inc w
     else i e
         clear w
     endifelse i e
