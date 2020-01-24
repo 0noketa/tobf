@@ -37,47 +37,15 @@
 #     copyadd in_var ...out_vars 
 #     copysub in_var ...out_vars 
 # resb imm
-#   declare size of static memory. default=number of vars. only once works.
-# mem_init imm
-#   initialize imm bytes of dynamic memory. only once works.
-# mem_clean imm
-#   works only after mem_init. clean dynamic memory area.
-#   mem_init and resb can be used after mem_clean again.
-# mem_clean imm fast
-#   fast and short version.
-#   doesnt clear values. clears just 1 byte in every cell.
-#   works when all values stored in memory was 0.
-#   on highly optimized bf implementations, this version will not be fast. just short.
-# mem_set imm_value ...addresses
-#   set constant or use command to dynamic memory 
-#   imm_value:
-#     any digits
-#       set constant
-#     input
-#       set input data. 
-#     print
-#       print data.
-#   address:
-#     +address or -address
-#       add or sub. can exists only once and works only with digits value.
-#     digits
-#       address
-#     var_name
-#       uses pointer variable
-# mem_w_move in_var ...addresses
-#   set value from variable to dynamic memory. addresses are the same as mem_set.
-# mem_w_moveadd in_var ...addresses
-# mem_w_movesub in_var ...addresses
-# mem_w_copy in_var ...addresses
-# mem_w_copyadd in_var ...addresses
-# mem_w_copysub in_var ...addresses
-# mem_r_move in_var ...addresses
-#   move value from  dynamic memory to variable. addresses are the same as mem_set.
-# mem_r_moveadd address ...out_vars
-# mem_r_movesub address ...out_vars
-# mem_r_copy address ...out_vars
-# mem_r_copyadd address ...out_vars
-# mem_r_copysub address ...out_vars
+#   declare size of static memory. default=number of vars. works when no subsystem was loaded.
+# load subsystem_name ...args
+#   loads subsystem after reserved vars and subsystems already loaded
+# loadas alias_name subsystem_name ...args
+#   loads and names as alias_name
+# unload subsysten_name
+#   unloads a subsystem. subsystem_name can be alias_name
+# subsystem_name.any_name ...args
+#   invokes a feature of subsystem
 # if cond_var
 # endif cond_var
 #   like "next i" in basic. this rule simplifies compiler.
@@ -91,1013 +59,709 @@
 # end
 #   can not be omitted
 
-idt = 0
-def put(s):
-    global idt
-    print("  " * idt + s)
-def uplevel():
-    global idt
-    idt += 1
-def downlevel():
-    global idt
-    idt = idt - 1 if idt > 0 else 0
+import io
 
-def begin_global(i):
-    put(">" * int(i))
-    
-def end_global(i):
-    put("<" * int(i))
+def split(s:str, sep=None, maxsplit=-1) -> list:
+    if sep == None:
+        return list(filter(len, map(str.strip, s.strip().split(maxsplit=maxsplit))))
+    else:
+        return list(map(str.strip, s.strip().split(sep=sep, maxsplit=maxsplit)))
 
-def begin(i):
-    put(">" * int(i + 1))
-    
-def end(i):
-    put("<" * int(i + 1))
-
-def inc_or_dec(c, n):
-    for i in range(n // 16):
-        put(c * 8 + " " + c * 8)
-
-    m = n % 16
-    if m == 0:
+class Mainsystem:
+    def has_var(self, name:str) -> bool:
+        return False
+    def addressof(self, name:str) -> int:
+        return 0
+    def valuesof(self, name:str) -> int:
+        """constant"""
+        return 0
+    def put(self, s:str):
         pass
-    elif m > 8:
-        m = m % 8
-        put(c * 8 + " " + c * m)
-    else:
-        put(c * m)
+    def put_with(self, addr:int, s:str):
+        """>>>something<<<"""
+        pass
+    def put_invoke(self, name:str, args:list):
+        pass
 
-def inc(n):
-    inc_or_dec("+", n)
+class InstructionBase:
+    def __init__(self, _name, _least_argc = 0):
+        super().__init__()
+        self._name = _name
+        self._least_argc = _least_argc
+    def name(self):
+        return self._name
+    def least_argc(self):
+        return self._least_argc
+    def put(self, main: Mainsystem, args:list):
+        pass
 
-def dec(n):
-    inc_or_dec("-", n)
+class SubsystemBase:
+    """module-like extension that can be specialized like classes"""
+    def __init__(self, _name:str, _instructions:dict={}, _consts={}, _enums=[], _vars:list=[], _size=-1):
+        self._loaded = False
+        self._offset = 0
+        self._main = None
+        self._initialized = False
+        self._name = _name
+        self._instructions = _instructions.copy()
+        self._consts = _consts.copy()
+        self._enums = _enums.copy()
+        self._vars = _vars.copy()
+        self._size = _size
+    def copy(self, _name:str):
+        r = type(self)(_name)
+        r._main=self._main
+        r._instructions=self._instructions
+        r._consts=self._consts
+        r._enums=self._enums
+        r._vars=self._vars
+        r._size=self._size
+        return r
+    def load(self, offset:int, main:Mainsystem):
+        if self._loaded:
+            return False
 
-def clear(v):
-    begin(v)
-    put("[-]")
-    end(v)
+        self._offset = offset
+        self._loaded = True
+        self._main = main
 
-def move(in_var, out_vars, vrs):
-    in_var = vrs.index(in_var)
-
-    for out_var in out_vars:
-        sign, out_var = separate_sign(out_var)
-        out_var = vrs.index(out_var)
-
-        if sign == "":
-            clear(out_var)
-
-    begin(in_var)
-    put("[")
-    end(in_var)
-
-    for out_var in out_vars:
-        sign, out_var = separate_sign(out_var)
-        out_var = vrs.index(out_var)
-
-        begin(out_var)
-        put("-" if sign == "-" else "+")
-        end(out_var)
-
-    begin(in_var)
-    put("-]")
-    end(in_var)
-
-def move_global(in_addr, out_addrs):
-    for out_addr in out_addrs:
-        begin_global(out_addr)
-        put("[-]")
-        end_global(out_addr)
-
-    moveadd_global(in_addr, out_addrs)
-
-def moveadd_global(in_addr, out_addrs):
-    begin_global(in_addr)
-    put("[")
-    end_global(in_addr)
-
-    for out_addr in out_addrs:
-        begin_global(out_addr)
-        put("+")
-        end_global(out_addr)
-
-    begin_global(in_addr)
-    put("-]")
-    end_global(in_addr)
-
-
-def load_var(in_var):
-    begin(in_var)
-    put("[")
-    end(in_var)
-    put("+")
-    begin(in_var)
-    put("-]")
-    end(in_var)
-
-def load_global(addr):
-    begin_global(addr)
-    put("[")
-    end_global(addr)
-    put("+")
-    begin_global(addr)
-    put("-]")
-    end_global(addr)
-
-def store_it(out_globals, out_vars, vrs=[]):
-    for out_var in out_vars:
-        sign, out_var = separate_sign(out_var)
-
-        if sign == "":
-            v = vrs.index(out_var)
-
-            clear(v)
-
-    put("[")
-
-    for out_global in out_globals:
-        begin_global(out_global)
-        inc(1)
-        end_global(out_global)
-
-    for out_var in out_vars:
-        sign, out_var = separate_sign(out_var)
+        return True
+    def name(self):
+        return self._name
+    def resize(self, size:int):
+        if self._initialized:
+            return
+        self._size = size
+    def has_const(self, name: str) -> bool:
+        return name in self._consts.keys()
+    def add_const(self, name: str, value:int) -> bool:
+        if name.isdigit():
+            return False
         
-        v = vrs.index(out_var)
+        if not (name in self._consts):
+            self._consts[name] = value
 
-        begin(v)
-        put("-" if sign == "-" else "+")
-        end(v)
+        return True
+    def has_enum(self, name: str) -> bool:
+        return name in self._enums
+    def add_enum(self, name: str) -> bool:
+        if name.isdigit():
+            return False
+        
+        if not (name in self._enums):
+            self._enums.append(name)
 
-    put("-]")
+        return True
+    def has_var(self, name: str) -> bool:
+        return name in self._vars
+    def add_var(self, name: str) -> bool:
+        if name.isdigit():
+            return False
+        
+        if not (name in self._vars):
+            self._vars.append(name)
 
-def calc_small_pair(n, vs):
-    """vs: num of vars"""
-    """+{result0}[>+{result1}<-]"""
+        return True
+    def valueof(self, name: str) -> int:
+        if self.has_const(name):
+            return self._consts[name]
+        if self.has_enum(name):
+            return self._enums.index(name)
 
-    n = n % 256
-    x = 256
-    y = 256
-    s = 256
-    for i in range(1, 256):
-        if n % i == 0:
-            j = n // i
-            s2 = int(i + j * vs)
+        return int(name)
+    def addressof(self, name: str) -> int:
+        if self.has_var(name):
+            return self._vars.index(name) + self.offset()
 
-            if s2 < s:
-                x = i
-                y = j
-                s = s2
+        return self.offset()
+    def add_ins(self, ins: InstructionBase) -> bool:
+        if ins.name() in self._instructions.keys():
+            return False
 
-    return max(x, y), min(x, y)
+        self._instructions[ins.name()] = ins
 
-def separate_sign(name):
-    if len(name) > 0 and name[0] in ["+", "-"]:
-        return name[0], name[1:]
-    else:
-        return "", name
+        return True
+    def has_ins(self, name:str, args:list):
+        """arg: args as single string"""
+        if not (name in self._instructions.keys()):
+            return False
 
-# memory
-# current layout: it rope address flagEnd flagContinue carried value
-cell_layout = {
-    # "it": 0,
-    "rope": 1,
-    "address": 2,
-    "flagEnd": 3,
-    "flagContinue": 4,
-    "carried": 5,
-    "value": 6
-}
-_vars_size = 256
-_vars_limited = False
-def limit_vars(n=256):
-    global _vars_size, _vars_limited
+        ins: InstructionBase = self._instructions[name]
 
-    if not _vars_limited:
-        # contains inplicit it
-        _vars_size = n + 1
-        _vars_limited = True
-def vars_size():
-    """registers"""
-    global _vars_size
-    return _vars_size
+        return len(args) >= ins.least_argc()
+    def put(self, name:str, args:list):
+        if name == "init" and self._initialized:
+            return
+        if name == "clean" and not self._initialized:
+            return
 
-def memcell_size(n_bytes=1):
-    return len(cell_layout.keys()) + n_bytes
+        ins: InstructionBase = self._instructions[name]
 
-_mem_initialized = False
-_mem_size = 0
+        ins.put(self._main, args)
 
-def mem2_init(size=16):
-    global cell_layout, _mem_initialized, _mem_size
-
-    if not _mem_initialized:
-        _mem_initialized = True
-        _mem_size = int(cod[1])
-
-def mem_init(size=16):
-    global cell_layout, _mem_initialized, _mem_size
-
-    if _mem_initialized:
-        return
-
-    _mem_initialized = True
-    _mem_size = size
-
-    # + eos
-    size = size + 1
-    rope = cell_layout["rope"]
-
-    put(">" * vars_size())
-    put(">" * rope)
-    
-    for i in range(size):
-        put(">" * memcell_size())
-        inc(1)
-
-    put("<" * (vars_size() + memcell_size() * size + rope))
-
-def mem_clean(fast=False):
-    global cell_layout, _mem_initialized, _mem_size, _vars_limited
-
-    if not _mem_initialized:
-        return
-
-    # + eos
-    size = _mem_size + 2
-
-    _vars_limited = False
-    _mem_initialized = False
-    _mem_size = 0
-
-    # with large memory, loop with rope should be better than this.
-
-    put(">" * vars_size())
-
-    if fast:
-        put(">" * cell_layout["rope"])
-        for i in range(size):
-            put(">" * memcell_size() + "[-]")
-        put("<" * cell_layout["rope"])
-    else:
-        for i in range(size):
-            put("[-]>" * memcell_size())
-
-    put("<" * (vars_size() + memcell_size() * size))
-
-def mem2_clean(fast=False):
-    global cell_layout, _mem_initialized, _mem_size, _vars_limited
-
-    if not _mem_initialized:
-        return
-
-    # + eos
-    size = _mem_size + 2
-
-    _vars_limited = False
-    _mem_initialized = False
-    _mem_size = 0
-
-    if fast:
-        return
-
-    # with large memory, loop with rope should be better than this.
-
-    put(">" * vars_size())
-
-    for i in range(size):
-        put("[-]>" * 2)
-
-    put("<" * (vars_size() + size * 2))
+        if name == "init":
+            self._initialized = True
+    def offset(self):
+        """offset of this subsystem"""
+        return self._offset
+    def size(self):
+        return len(self._vars) if self._size == -1 else self._size
 
 
-def mem_set(value="1", address=0, vrs=[]):
-    sign, address = separate_sign(address)
+class Tobf(Mainsystem):
+    def __init__(self, _vars = []):
+        self._vars = _vars
+        self._reserved = -1
+        self._subsystems = {}
+        self._loaded_subsystems = {}
+        self._idt = 0
+        self._size = 0
+        self._newest_subsystem_name = ""
 
-    # should check chars at here
-    if not (address in vrs):
-        address = int(address)
+    def reserve(self, size):
+        """manually selects size of variable area\n
+        can be reselected when on subsystem was loaded."""
 
-    if type(address) == str:
-        v = vrs.index(address)
-        load_var(v)
+        if len(self._loaded_subsystems.keys()) > 0:
+            return False
 
-        put("[")
-        begin(v)
-        put("+")
-        end(v)
-        begin_global(vars_size() + cell_layout["address"])
-        inc(1)
-        end_global(vars_size() + cell_layout["address"])
-        put("-]")
+        self._reserved = size
 
-    begin_global(vars_size())
+        return True
 
-    if type(address) == int:
-        begin_global(cell_layout["address"])
-        inc(address)
-        end_global(cell_layout["address"])
+    def install_subsystem(self, subsystem: SubsystemBase):
+        self._subsystems[subsystem.name()] = subsystem
 
-    put(""">>>>+[<<[>>>>>>>+<<<<<+<<-]>>>>>>>-<<<<<<+>[<->[-]]>>>>>>>+<<<<<<<<[>>>""")
+    def offsetof_next_subsystem(self) -> int:
+        if len(self._loaded_subsystems) == 0:
+            return self._reserved if self._reserved != -1 else len(self._vars) + 1
 
-    if value == "input":
-        put(",")
-    elif value == "print":
-        put(".")
-    else:
-        if sign == "":
-            put("[-]")
+        next = 0
+        for key in self._loaded_subsystems.keys():
+            sub = self._loaded_subsystems[key]
+            next2 = sub.offset() + sub.size()
+            if next < next2:
+                next = next2
+        
+        return next
 
-        value = int(value)
-        if sign == "-":
-            dec(value)
+    def offsetof_subsystem(self, alias:str) -> int:
+        subsystem = self.subsystem_by_alias(alias)
+
+        return subsystem.offset()
+
+    def subsystem_by_name(self, name) -> SubsystemBase:
+        """returns a subsystem"""
+        if not (name in self._subsystems.keys()):
+            put_err(f"subsystem {name} is not installed")
+            return None
+
+        return self._subsystems[name]
+
+    def subsystem_by_alias(self, name) -> SubsystemBase:
+        """returns an instance of subsystem"""
+
+        if name == "" and self._newest_subsystem_name != "":
+            name = self._newest_subsystem_name
+
+        if not (name in self._loaded_subsystems.keys()):
+            put_err(f"subsystem aliased as {name} is not loaded")
+            return None
+
+        return self._loaded_subsystems[name]
+
+    def put_load(self, name:str, args:list, alias=""):
+        if not (name in self._subsystems.keys()):
+            put_err(f"subsystem {name} is not installed")
+            return False
+        
+        if alias == "":
+            alias = name
+
+        if alias in self._loaded_subsystems.keys():
+            put_err(f"subsystem aliased as {alias} is already loaded.")
+            return False
+
+        subsystem_base = self.subsystem_by_name(name)
+        subsystem = subsystem_base.copy(alias)
+        subsystem.load(self.offsetof_next_subsystem(), self)
+
+        self._loaded_subsystems[alias] = subsystem
+        self._newest_subsystem_name = alias
+
+        if subsystem.has_ins("init", args):
+            subsystem.put("init", args)
+
+        return True
+
+    def put_unload(self, name: str, args: list) -> bool:
+        subsystem = self.subsystem_by_alias(name)
+
+        if subsystem == None:
+            return False
+
+        if subsystem.has_ins("clean", args):
+            subsystem.put("clean", args)
+
+        self._loaded_subsystems.pop(name)
+
+        self._newest_subsystem_name = ""
+
+        return True
+    def put(self, s):
+        print("  " * self._idt + s)
+
+    def uplevel(self):
+        self._idt += 1
+    def downlevel(self):
+        self._idt = self._idt - 1 if self._idt > 0 else 0
+
+    def begin_global(self, addr:int):
+        self.put(">" * int(addr))
+
+    def end_global(self, addr:int):
+        self.put("<" * int(addr))
+
+    def with_addr(self, addr:int, s:str):
+        self.begin_global(addr)
+        self.put(s)        
+        self.end_global(addr)
+
+    def put_with(self, addr:int, s:str):
+        self.with_addr(addr, s)        
+
+    def has_var(self, name:str) -> bool:
+        return name in self._vars
+    def addressof_var(self, name:str) -> int:
+        return int(self._vars.index(name) + 1)
+
+    def addressof(self, value) -> int:
+        if type(value) != str:
+            return value
+        elif ":" in value:
+            sub_name, name = split(value, sep=":", maxsplit=1)
+            sub = self.subsystem_by_alias(sub_name)
+
+            return sub.addressof(name)
+        elif self.has_var(value):
+            return self.addressof_var(value) 
+        elif value.isdigit():
+            return int(value)
         else:
-            inc(value)
-    put(""">>>>>-<<[-]<<<<<<[-]]>>>>>>>>]+[-<<<<<<<<<<[>>>+<<<[-]]>>+>[<-<<+>>>[-]]+<[>-<[-]]>]<<<<""")
+            print(f"failed to get address of {value}")
+            raise "error"
 
-    end_global(vars_size())
+    def valueof(self, value) -> int:
+        if type(value) != str:
+            return value
+        elif ":" in value:
+            sub_name, name = split(value, sep=":", maxsplit=1)
+            sub = self.subsystem_by_alias(sub_name)
 
-def mem_w_move(value="1", address=0, vrs=[], copy=False):
-    sign, address = separate_sign(address)
-
-    # should check chars at here
-    if not (address in vrs):
-        address = int(address)
-    if not (value in vrs):
-        value = int(value)
-
-    if type(address) == str:
-        v = vrs.index(address)
-
-        load_var(v)
-
-        put("[")
-        begin(v)
-        put("+")
-        end(v)
-        begin_global(vars_size() + cell_layout["address"])
-        inc(1)
-        end_global(vars_size() + cell_layout["address"])
-        put("-]")
-
-    if type(value) == str:
-        v = vrs.index(value)
-
-        if copy:
-            load_var(v)
-
-            put("[")
-            begin(v)
-            put("+")
-            end(v)
-            begin_global(vars_size() + cell_layout["carried"])
-            inc(1)
-            end_global(vars_size() + cell_layout["carried"])
-            put("-]")
+            return sub.valueof(name)
+        elif value.isdigit():
+            return int(value)
         else:
-            begin(v)
-            put("[")
-            end(v)
-            begin_global(vars_size() + cell_layout["carried"])
-            inc(1)
-            end_global(vars_size() + cell_layout["carried"])
-            begin(v)
-            put("-]")
-            end(v)
+            return value
 
-    begin_global(vars_size())
+    def begin(self, i):
+        self.put(">" * int(i + 1))
+        
+    def end(self, i):
+        self.put("<" * int(i + 1))
 
-    if type(address) == int:
-        begin_global(cell_layout["address"])
-        inc(address)
-        end_global(cell_layout["address"])
+    def with_var(self, i, s):
+        self.begin(i)
+        self.put(s)        
+        self.end(i)
 
-    # warrning: use mem_set instead of this.
-    if type(value) == int:
-        begin_global(cell_layout["carried"])
-        inc(value)
-        end_global(cell_layout["carried"])
+    def inc_or_dec(self, c, n):
+        for i in range(n // 16):
+            self.put(c * 8 + " " + c * 8)
 
-    put(""">>>>+[>[>>>>>>>+<<<<<<<-]<<<[>>>>>>>+<<<<<+<<-]>>>>>>>-<<<<<<+>[<->[-]]>>>>>>>+<<<<<<<<[>>>""")
-    if sign == "":
-        put("[-]")
-    put(""">>>>>>[<<<<<<""")
-    if sign == "-":
-        dec(1)
-    else:
-        inc(1)
-    put(""">>>>>>-]<-<<[-]<<<<<<[-]]>>>>>>>>]""")
-    put("""+[-<<<<<<<<<<[>>>+<<<[-]]>>+>[<-<<+>>>[-]]+<[>-<[-]]>]<<<<""")
+        m = n % 16
+        if m == 0:
+            pass
+        elif m > 8:
+            m = m % 8
+            self.put(c * 8 + " " + c * m)
+        else:
+            self.put(c * m)
 
-    end_global(vars_size())
+    def inc(self, n):
+        self.inc_or_dec("+", n)
 
-def mem_r_move(address=0, out_vars=[], vrs=[], copy=False):
-    # should check chars at here
-    if not (address in vrs):
-        address = int(address)
+    def dec(self, n):
+        self.inc_or_dec("-", n)
 
-    if type(address) == str:
-        v = vrs.index(address)
+    def clear(self, v):
+        self.clear_vars([v], True)
 
-        load_var(v)
+    def clear_vars(self, out_vars:list, force=False):
+        for out_var in out_vars:
+            sign, out_var = self.separate_sign(out_var)
 
-        put("[")
-        begin(v)
-        put("+")
-        end(v)
-        begin_global(vars_size() + cell_layout["address"])
-        inc(1)
-        end_global(vars_size() + cell_layout["address"])
-        put("-]")
+            if not force and sign != "":
+                    continue
 
-    begin_global(vars_size())
+            addr = self.addressof(out_var)
+            self.with_addr(addr, "[-]")
 
-    if type(address) == int:
-        begin_global(cell_layout["address"])
-        inc(address)
-        end_global(cell_layout["address"])
 
-    put(""">>>>+[<<[>>>>>>>+<<<<<+<<-]>>>>>>>-<<<<<<+>[<->[-]]>>>>>>>+<<<<<<<<[<<<""")
+    def put_move(self, in_addr, out_vars):
+        in_addr = self.addressof(in_addr)
 
-    if copy:
-        put(""">>>>>>[<<<<<<+>>>>>>-]<<<<<<[>>>>>>+>>>>>>+<<<<<<<<<<<<-]""")
-    else:
-        put(""">>>>>>[>>>>>>+<<<<<<-]<<<<<<""")
+        self.clear_vars(out_vars)
 
-    put(""">>>>>>>>>>>-<<[-]<<<<<<[-]]>>>>>>>>]""")
-    put("""+[-<<<<<<[-]>>>>>>>[<<<<<<<+>>>>>>>-]<<<<<<<<<<<[>>>+<<<[-]]>>+>[<-<<+>>>[-]]+<[>-<[-]]>]<<<<""")
+        self.with_addr(in_addr, "[")
 
-    end_global(vars_size())
+        for out_var in out_vars:
+            sign, out_var = self.separate_sign(out_var)
+            out_addr = self.addressof(out_var)
 
-    # load carried to it
-    load_global(vars_size() + cell_layout["carried"])
+            if in_addr == out_addr:
+                print(f"move from and to {in_addr}")
+                raise "error"
 
-    store_it([], out_vars, vrs)
+            self.with_addr(out_addr, "-" if sign == "-" else "+")
 
-def put_peek(address=0, is_imm=True):
-    pass
+        self.with_addr(in_addr, "-]")
 
-if __name__ == "__main__":
-    import sys
+    def move_global(self, in_addr, out_addrs):
+        for out_addr in out_addrs:
+            self.with_addr(out_addr, "[-]")
 
-    comment = len(sys.argv) > 1 and sys.argv[1] == "-v"
+        self.moveadd_global(in_addr, out_addrs)
 
-    src = input().strip()
-    vrs = list(filter(len, map(str.strip, src.split())))
+    def moveadd_global(self, in_addr, out_addrs):
+        self.with_addr(in_addr, "[")
 
-    if comment:
-        put(src)
+        for out_addr in out_addrs:
+            self.with_addr(out_addr, "+")
 
-    while True:
-        src = input().strip()
-        cod = list(filter(len, map(str.strip, src.split())))
+        self.with_addr(in_addr, "-]")
 
-        if len(cod) == 0:
-            continue
+    def load_it(self, addr):
+        addr = self.addressof(addr)
 
-        if cod[0] == "#":
-            if comment:
-                put(src)
-            continue
-        elif comment:
-            put(src)
+        self.with_addr(addr, "[")
+        self.put("+")
+        self.with_addr(addr, "-]")
 
-        if len(cod) > 0 and cod[0] == "end":
-            put("[-]")
-            break
+    def store_it(self, out_addrs):
+        self.clear_vars(out_addrs)
 
-        if len(cod) < 2:
-            print("error:", cod)
-            break
+        self.put("[")
 
-        if cod[0] == "bf":
-            put(cod[1])
+        for out_addr in out_addrs:
+            if type(out_addr) == str:
+                sign, out_addr = self.separate_sign(out_addr)        
+                addr = self.addressof(out_addr)
+            else:
+                sign = ""
+                addr = out_addr
 
-            continue
+            self.with_addr(addr, "-" if sign == "-" else "+")
 
-        if (len(cod) < 3
-            and cod[0] in [
-                "set", "add", "sub",
-                "copy", "copyadd", "copysub",
-                "move", "moveadd", "movesub",
-                "mem_w_copy", "mem_w_copyadd", "mem_w_copysub",
-                "mem_w_move", "mem_w_moveadd", "mem_w_movesub",
-                "mem_r_copy", "mem_r_copyadd", "mem_r_copysub",
-                "mem_r_move", "mem_r_moveadd", "mem_r_movesub",
-                "mem2_w_copy", "mem2_w_copyadd", "mem2_w_copysub",
-                "mem2_w_move", "mem2_w_moveadd", "mem2_w_movesub",
-                "mem2_r_copy", "mem2_r_copyadd", "mem2_r_copysub",
-                "mem2_r_move", "mem2_r_moveadd", "mem2_r_movesub",
-                "ifelse", "else", "endifelse"]):
-            print("error:", cod)
-            break
+        self.put("-]")
+
+    def calc_small_pair(self, n, vs):
+        """n: result0 * result1\n
+        vs: num of vars\n
+        +{result0}[>+{result1}<-]"""
+
+        n = n % 256
+        x = 1
+        y = 256
+        s = 256
+        for i in range(1, 256):
+            if n % i == 0:
+                j = n // i
+                s2 = int(i + j * vs)
+
+                if s2 < s:
+                    x = i
+                    y = j
+                    s = s2
+
+        return max(x, y), min(x, y)
+
+    def separate_sign(self, name):
+        if type(name) == str and len(name) > 0 and name[0] in ["+", "-"]:
+            return name[0], name[1:]
+        else:
+            return "", name
+
+    def put_cmd(self, value, sign = ""):
+        """simple commands for "set" instruction"""
+        if value == "input":
+            self.put(",")
+        elif value == "print":
+            self.put(".")
+        else:
+            if type(value) == str:
+                value = self.valueof(value)
+
+            if sign == "-":
+                self.dec(value)
+            else:
+                self.inc(value)
+
+    def put_set(self, value, args: list):
+        n = 1
+        m = self.valueof(value)
+
+        if not (m in ["input", "print"]):
+            n = int(m)
+            n, m = self.calc_small_pair(n, len(args))
+            value = m
+
+            self.clear_vars(args)
+
+        if n > 1 and n * m * len(args) <= n + 3 + m * len(args):
+            value = int(n * m)
+            n = 1
+
+
+        if n > 1:
+            self.inc(n)
+            self.put("[")
+            self.uplevel()
+
+        for name in args:
+            sign, name = self.separate_sign(name)
+            addr = self.addressof(name) 
+
+            self.begin_global(addr)
+            self.put_cmd(value, sign)            
+            self.end_global(addr)
+
+        if n > 1:
+            self.downlevel()
+            self.put("-]")
+
+    def put_invoke(self, name:str, args:list):
+        if ":" in name:
+            sub_name, name = name.split(":", maxsplit=1)
+
+            sub = self.subsystem_by_alias(sub_name)
+
+            if sub == None:
+                raise f"subsystem {sub_name} is not loaded"
+            if not sub.has_ins(name, args):
+                raise f"{sub.name()} hasnt {name}"
+
+            return sub.put(name, args)
 
         # aliases
-        if cod[0] == "clear":
-            cod = ["set", "0"] + cod[1:]
-
-        if cod[0] in ["inc", "dec"]:
-            sign = "+" if cod[0] == "inc" else "-"
-            cod = ["set", "1"] + [sign + x for x in cod[1:]]
-
-        if cod[0] in ["add", "sub"]:
-            sign = "+" if cod[0] == "add" else "-"
-            cod = ["set", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["copyadd", "copysub"]:
-            sign = "+" if cod[0] == "copyadd" else "-"
-            cod = ["copy", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["moveadd", "movesub"]:
-            sign = "+" if cod[0] == "moveadd" else "-"
-            cod = ["move", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem_w_copyadd", "mem_w_copysub"]:
-            sign = "+" if cod[0] == "mem_w_copyadd" else "-"
-            cod = ["mem_w_copy", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem_w_moveadd", "mem_w_movesub"]:
-            sign = "+" if cod[0] == "mem_w_moveadd" else "-"
-            cod = ["mem_w_move", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem_r_copyadd", "mem_r_copysub"]:
-            sign = "+" if cod[0] == "mem_r_copyadd" else "-"
-            cod = ["mem_r_copy", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem_r_moveadd", "mem_r_movesub"]:
-            sign = "+" if cod[0] == "mem_r_moveadd" else "-"
-            cod = ["mem_r_move", cod[1]] + [sign + x for x in cod[2:]]
-            
-        if cod[0] in ["mem2_w_copyadd", "mem2_w_copysub"]:
-            sign = "+" if cod[0] == "mem2_w_copyadd" else "-"
-            cod = ["mem2_w_copy", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem2_w_moveadd", "mem2_w_movesub"]:
-            sign = "+" if cod[0] == "mem2_w_moveadd" else "-"
-            cod = ["mem2_w_move", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem2_r_copyadd", "mem2_r_copysub"]:
-            sign = "+" if cod[0] == "mem2_r_copyadd" else "-"
-            cod = ["mem2_r_copy", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] in ["mem2_r_moveadd", "mem2_r_movesub"]:
-            sign = "+" if cod[0] == "mem2_r_moveadd" else "-"
-            cod = ["mem2_r_move", cod[1]] + [sign + x for x in cod[2:]]
-
-        if cod[0] == "resb":
-            size = int(cod[1])
-            limit_vars(size)
-
-            continue
-
-        if cod[0] == "mem_init":
-            # default
-            limit_vars(len(vrs))
-
-            size = int(cod[1])
-            mem_init(size)
-
-            continue
-
-        if cod[0] == "mem2_init":
-            # default
-            limit_vars(len(vrs))
-
-            size = int(cod[1])
-            mem2_init(size)
-
-            continue
-
-        if cod[0] == "mem_clean":
-            mem_clean(len(cod) > 2 and cod[2] == "fast")
-
-            continue
-
-        if cod[0] == "mem2_clean":
-            mem2_clean(len(cod) > 2 and cod[2] == "fast")
-
-            continue
-
-        if cod[0] == "mem_set":
-            # default
-            limit_vars(len(vrs))
-            mem_init(32)
-
-            value = cod[1]
-
-            for address in cod[2:]:
-                mem_set(value, address, vrs)
-
-            continue
-
-        if cod[0] == "mem2_set":
-            def put_value(value):
-                if sign == "" and value.isdigit():
-                    put("[-]")
-
-                if value == "input":
-                    put(",")
-                elif value == "print":
-                    put(".")
-                else:
-                    value = int(value)
-                    if sign == "-":
-                        dec(value)
-                    else:
-                        inc(value)
-
-            # default
-            limit_vars(len(vrs))
-            mem_init(32)
-
-            value = cod[1]
-
-            for address in cod[2:]:
-                sign, address = separate_sign(address)
-
-                if not (address in vrs):
-                    address = int(address)
-
-                    begin_global(vars_size() + address * 2 + 1)
-
-                    put_value(value) 
-                    
-                    end_global(vars_size() + address * 2 + 1)
-                else:
-                    v = vrs.index(address)
-
-                    load_var(v)
-
-                    put("[")
-                    begin(v)
-                    put("+")
-                    end(v)
-
-                    begin_global(vars_size() + 2)
-                    inc(1)
-                    end_global(vars_size() + 2)
-                    put("-]")
-
-                    begin_global(vars_size())
-                    put(""">>[[>>+<<-]+>>-]<""")
-                    put_value(value)
-                    put("""<[-<<]""")
-                    end_global(vars_size())
-
-            continue
-
-        if cod[0] in ["mem2_w_move", "mem2_w_copy"]:
-            # default
-            limit_vars(len(vrs))
-            mem2_init(32)
-
-            v = vrs.index(cod[1])
-
-            if cod[0] == "mem2_w_copy":
-                load_var(v)
-
-                store_it([vars_size() + 4], ["+" + cod[1]], vrs)
-            else:
-                begin(v)
-                put("[")
-                end(v)
-                begin_global(vars_size() + 4)
-                put("+")
-                end_global(vars_size() + 4)
-                begin(v)
-                put("-]")
-                end(v)
-
-            out_vars = cod[2:]
-
-            for i in range(len(out_vars)):
-                name = out_vars[i]
-                sign, name = separate_sign(name)
-
-                v = vrs.index(name)
-                load_var(v)
-
-                store_it([vars_size() + 2], ["+" + name], vrs)
-
-                # for next destination
-                if i < len(out_vars) - 1:
-                    moveadd_global(vars_size() + 4, [vars_size()])
-                    moveadd_global(vars_size(), [0, vars_size() + 4])
-
-                begin_global(vars_size())
-                put(""">>[->>[>>+<<-]<<[>>+<<-]+>>]""")
-                if sign == "":
-                    put("""<[-]>""")
-                put(""">>[<<<""")
-                put("-" if sign == "-" else "+")
-                put(""">>>-]<<<<[-<<]""")
-                end_global(vars_size())
-
-                if i < len(out_vars) - 1:
-                    moveadd_global(0, [vars_size() + 4])
-
-            continue
-
-        if cod[0] in ["mem2_r_move", "mem2_r_copy"]:
-            # default
-            limit_vars(len(vrs))
-            mem2_init(32)
-
-            address = cod[1]
-
-            # clear dst of move/copy
-            for name in cod[2:]:
-                sign, name = separate_sign(name)
-
-                if sign == "":
-                    v = vrs.index(name)
-
-                    clear(v)
-
-            # static addressing
-            if not (address in vrs):
-                address = int(address)
-                address = vars_size() + address * 2 + 1
-
-                if cod[0] == "mem2_r_copy":
-                    out_globals = [address]
-                    out_vars = cod[2:]
-                    last = ""
-                else:
-                    out_globals = []
-                    out_vars = cod[2:-1]
-                    last = cod[-1]
-
-                # copy
-                if len(out_vars) > 1:
-                    load_global(address)
-
-                    store_it(out_globals, out_vars, vrs)
-
-                # move                
-                if last != "":
-                    sign, name = separate_sign(last)
-
-                    v = vrs.index(name)
-
-                    begin_global(address)
-                    put("[")
-                    end_global(address)
-                    begin(v)
-                    put("-" if sign == "-" else "+")
-                    end(v)
-                    begin_global(address)
-                    put("-]")
-                    end_global(address)
-            else:
-                v = vrs.index(address)
-
-                load_var(v)
-
-                store_it([vars_size() + 2], ["+" + address], vrs)
-
-                begin_global(vars_size())
-                put(""">>[[>>+<<-]+>>-]""")
-                if cod[0] == "mem2_r_copy":
-                    put("""<[>>>+<<<-]>>>[<<+<+>>>-]<<""")
-                else:
-                    put("""<[>+<-]>""")
-                put("""<<[->>>>[<<+>>-]<<<<<<]>>>>[<<+>>-]<<<<""")
-                end_global(vars_size())
-
-                if False:  # ex: from set
-                    begin_global(vars_size())
-                    put(""">>[[>>+<<-]+>>-]<""")
-                    put_value(value)
-                    put("""<[-<<]""")
-                    end_global(vars_size())
-
-
-                begin_global(vars_size() + 2)
-                put("[")
-                end_global(vars_size() + 2)
-
-                for name in cod[2:]:
-                    sign, name = separate_sign(name)
-                    v = vrs.index(name)
-
-                    begin(v)
-                    put("-" if sign == "-" else "+")
-                    end(v)
-
-                begin_global(vars_size() + 2)
-                put("-]")
-                end_global(vars_size() + 2)
-
-            continue
-
-        if cod[0] == "mem_w_copy":
-            # default
-            limit_vars(len(vrs))
-            mem_init(32)
-
-            value = cod[1]
-
-            for address in cod[2:]:
-                mem_w_move(value, address, vrs, True)
-
-            continue
-
-        if cod[0] == "mem_w_move":
-            # default
-            limit_vars(len(vrs))
-            mem_init(32)
-
-            value = cod[1]
-
-
-            for address in cod[2:-1]:
-                mem_w_move(value, address, vrs, True)
-
-            mem_w_move(value, cod[-1], vrs, False)
-
-            continue
-
-        if cod[0] == "mem_r_copy":
-            # default
-            limit_vars(len(vrs))
-            mem_init(32)
-
-            address = cod[1]
-
-            mem_r_move(address, cod[2:], vrs, True)
-
-            continue
-
-        if cod[0] == "mem_r_move":
-            # default
-            limit_vars(len(vrs))
-            mem_init(32)
-
-            address = cod[1]
-
-            mem_r_move(address, cod[2:], vrs, False)
-
-            continue
-
-        if cod[0] == "set":
-            n = int(cod[1])
-
-            vs = len(cod) - 2
-            if vs == 1 or n <= 8:
-                for name in cod[2:]:
-                    sign, name = separate_sign(name)
-
-                    v = vrs.index(name)
-                    begin(v)
-
-                    if sign == "":
-                        put("[-]")
-                    
-                    if sign == "-":
-                        dec(n)
-                    else:
-                        inc(n)
-            
-                    end(v)
-            else:
-                n, m = calc_small_pair(n, vs)
-
-                for name in cod[2:]:
-                    sign, name = separate_sign(name)
-
-                    if sign != "":
-                        continue
-
-                    v = vrs.index(name)
-
-                    clear(v)
-
-                inc(n)
-                put("[")
-                uplevel()
-
-                for name in cod[2:]:
-                    sign, name = separate_sign(name)
-
-                    v = vrs.index(name)
-
-                    begin(v)
-                    if sign == "-":
-                        dec(m)
-                    else:
-                        inc(m)
-            
-                    end(v)
-
-                downlevel()
-                put("-]")
-
-            continue
-
-        if cod[0] in "copy":
-            v_from = vrs.index(cod[1])
-
+        if name in ["inc", "dec"]:
+            sign = "+" if name == "inc" else "-"
+            name = "set"
+            args = ["1"] + [sign + arg for arg in args]
+        if name == "clear":
+            name = "set"
+            args = ["0"] + args
+        if name in ["print", "input"]:
+            args = [name] + args
+            name = "set"
+        if name in ["add", "sub"]:
+            sign = "+" if name == "add" else "-"
+            name = "set"
+            args = [args[0]] + [sign + x for x in args[1:]]
+        if name in ["copyadd", "copysub"]:
+            sign = "+" if name == "copyadd" else "-"
+            name = "copy"
+            args = [args[0]] + [sign + x for x in args[1:]]
+        if name in ["moveadd", "movesub"]:
+            sign = "+" if name == "moveadd" else "-"
+            name = "move"
+            args = [args[0]] + [sign + x for x in args[1:]]
+
+
+        if name == "resb":
+            size = int(args[0])
+            self.reserve(size)
+
+            return True
+
+        if name == "load":
+            self.put_load(args[0], args[1:])
+
+            return True
+
+        if name == "loadas":
+            self.put_load(args[1], args[2:], args[0])
+
+            return True
+
+        if name == "unload":
+            self.put_unload(args[0], args[1:])
+
+            return True
+
+        if name == "set":
+            self.put_set(args[0], args[1:])
+
+            return True
+
+        if name in "copy":
             # move to it
-            load_var(v_from)
+            self.load_it(args[0])
 
             # copy and restore
-            store_it([], cod[2:] + ["+" + cod[1]], vrs)
+            self.store_it(args[1:] + ["+" + args[0]])
 
-            continue
+            return True
 
 
-        if cod[0] in "move":
-            move(cod[1], cod[2:], vrs)
+        if name in "move":
+            self.put_move(args[0], args[1:])
 
-            continue
+            return True
 
-        if cod[0] in ["if", "while"]:
-            v_from = vrs.index(cod[1])
+        if name in ["if", "while"]:
+            addr = self.addressof(args[0])
 
-            begin(v_from)
-            put("[")
-            end(v_from)
+            self.with_addr(addr, "[")
+            self.uplevel()
 
-            uplevel()
+            return True
 
-            continue
+        if name in ["endif", "endwhile"]:
+            addr = self.addressof(args[0])
 
-        if cod[0] in ["endif", "endwhile"]:
-            v_from = vrs.index(cod[1])
+            self.downlevel()
 
-            downlevel()
+            self.with_addr(addr, "[-]]" if name == "endif" else "]")
 
-            begin(v_from)
-            put("[-]]" if cod[0] == "endif" else "]")
-            end(v_from)
+            return True
 
-            continue
+        if name == "ifelse":
+            v_then = self.addressof(args[0])
+            v_else = self.addressof(args[1])
 
-        if cod[0] == "ifelse":
-            v_then = vrs.index(cod[1])
-            v_else = vrs.index(cod[2])
+            self.with_addr(v_else, "[-]+")
+            self.with_addr(v_then, "[")
+            self.uplevel()
 
-            begin(v_else)
-            put("[-]+")
-            end(v_else)
+            return True
 
-            begin(v_then)
-            put("[")
-            end(v_then)
+        if name == "else":
+            v_then = self.addressof(args[0])
+            v_else = self.addressof(args[1])
 
-            uplevel()
+            self.downlevel()
+            self.with_addr(v_else, "-")
+            self.with_addr(v_then, "[-]]")
+            self.with_addr(v_else, "[")
+            self.uplevel()
 
-            continue
+            return True
 
-        if cod[0] == "else":
-            v_then = vrs.index(cod[1])
-            v_else = vrs.index(cod[2])
+        if name == "endifelse":
+            v_from = vrs.addressof(args[1])
 
-            downlevel()
+            self.downlevel()
+            self.with_addr(v_from, "-]")
 
-            begin(v_else)
-            put("-")
-            end(v_else)
+            return True
 
-            begin(v_then)
-            put("[-]]")
-            end(v_then)
+        print(f"unknown instruction {name}")
+        raise "error"
 
-            begin(v_else)
-            put("[")
-            end(v_else)
+    def compile_instruction(self, src:str):
+        src = src.strip()
 
-            uplevel()
+        if src.startswith("#") or len(src) == 0:
+            return True
 
-            continue
+        name, *args = split(src)
 
-        if cod[0] == "endifelse":
-            v_from = vrs.index(cod[2])
+        return self.put_invoke(name, args)
+    
+    def compile_all(self, src:list):
+        for i in src:
+            self.compile_instruction(i)
 
-            downlevel()
+        self.put("[-]")
 
-            begin(v_from)
-            put("-]")
-            end(v_from)
 
-            continue
 
-        if cod[0] in ["input", "print"]:
-            tbl = {
-                "input": ",",
-                "print": ".",
-            }
 
-            for name in cod[1:]:
-                v_from = vrs.index(name)
+class Instruction_DefineConst(InstructionBase):
+    def __init__(self, _name, _sub: SubsystemBase):
+        super().__init__(_name, _least_argc=2)
+        self._sub = _sub
+    def put(self, main: Mainsystem, args:list):
+        v = args[0]
+        names = args[1:]
 
-                begin(v_from)
-                put(tbl[cod[0]])
-                end(v_from)
+        for name in names:
+            self._sub.add_const(name, self._sub.valueof(v))
+class Instruction_DefineEnum(InstructionBase):
+    def __init__(self, _name, _sub: SubsystemBase):
+        super().__init__(_name, _least_argc=1)
+        self._sub = _sub
+    def put(self, main: Mainsystem, args:list):
+        for name in args:
+            self._sub.add_enum(name)
+class Instruction_DefineVar(InstructionBase):
+    def __init__(self, _name, _sub: SubsystemBase):
+        super().__init__(_name, _least_argc=1)
+        self._sub = _sub
+    def put(self, main: Mainsystem, args:list):
+        for name in args:
+            self._sub.add_var(name)
+class Instruction_ResizeVars(InstructionBase):
+    def __init__(self, _name, _sub: SubsystemBase):
+        super().__init__(_name, _least_argc=1)
+        self._sub = _sub
+    def put(self, main: Mainsystem, args:list):
+        self._sub.resize(int(args[0]))
+class Subsystem_ConstSet(SubsystemBase):
+    """constant definitions"""
+    def __init__(self, _name="constset"):
+        super().__init__(_name)
+        self.add_ins(Instruction_DefineConst("const", self))
+        self.add_ins(Instruction_DefineEnum("enum", self))
+class Subsystem_Consts(SubsystemBase):
+    """constant definitions"""
+    def __init__(self, _name="consts"):
+        super().__init__(_name)
+        self.add_ins(Instruction_DefineConst("def", self))
+class Subsystem_Enums(SubsystemBase):
+    """constant definitions"""
+    def __init__(self, _name="enums"):
+        super().__init__(_name)
+        self.add_ins(Instruction_DefineEnum("def", self))
+class Subsystem_Vars(SubsystemBase):
+    """local variable area"""
+    def __init__(self, _name="vars"):
+        super().__init__(_name)
+        self.add_ins(Instruction_ResizeVars("init", self))
+        self.add_ins(Instruction_DefineVar("def", self))
 
-            continue
 
-        print("error unknown:", cod)
-        break
+
+
+if __name__ == "__main__":
+    _line = input().strip()
+
+    while _line.startswith("#"):
+        _line = input().strip()
+    
+    compiler = Tobf(split(_line))
+    compiler.install_subsystem(Subsystem_Enums())
+    compiler.install_subsystem(Subsystem_Consts())
+    compiler.install_subsystem(Subsystem_ConstSet())
+    compiler.install_subsystem(Subsystem_Vars())
+
+    _src = []
+    _line = input().strip()
+
+    while _line != "end":
+        _src.append(_line)
+        _line = input().strip()
+
+    compiler.compile_all(_src)
+
