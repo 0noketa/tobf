@@ -999,15 +999,6 @@ if __name__ == "__main__":
         if cod[0] in "copy":
             v_from = vrs.index(cod[1])
 
-            # clear dst
-            for name in cod[2:]:
-                sign, name = separate_sign(name)
-
-                if sign == "":
-                    v_to = vrs.index(name)
-
-                    clear(v_to)
-
             # move to it
             load_var(v_from)
 

@@ -1,0 +1,75 @@
+len max_chars rest_chars rest_mem c e p q lines rest_lines
+
+mem2_init 255
+
+set 255 rest_mem
+set 4 lines
+set 60 max_chars
+
+# "lines" times reads as str starts with length
+# every str has max_chars plus 1 bytes
+set 0 p
+copy lines rest_lines
+while rest_lines
+    copy p q
+    inc q
+
+    copy rest_mem c
+    ifelse c e
+        copy max_chars rest_chars
+    else c e
+        clear rest_chars
+    endifelse c e
+
+    while rest_chars
+        input c
+        sub 10 c
+        ifelse c e
+            add 10 c
+            mem2_w_move c q
+
+            inc q
+            inc len
+            dec rest_chars
+            dec rest_mem
+        else c e
+            clear rest_chars
+        endifelse c e
+
+        copy rest_mem c
+        ifelse c e
+        else c e
+            clear rest_chars
+        endifelse c e
+    endwhile rest_chars
+
+    mem2_w_move len p
+    copyadd max_chars p
+    dec rest_lines
+endwhile rest_lines
+
+
+set 0 p
+copy lines rest_lines
+while rest_lines
+    mem2_r_copy p rest_chars
+    copy p q
+    inc q
+
+    while rest_chars
+        mem2_r_copy q c
+        print c
+        inc q
+        dec rest_chars
+    endwhile rest_chars
+
+    set 10 c
+    print c
+
+    copyadd max_chars p
+    dec rest_lines
+endwhile rest_lines
+
+
+end
+
