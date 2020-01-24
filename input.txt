@@ -1,0 +1,23 @@
+x y z
+loadas until_space code mod_input
+loadas until_eol code mod_input
+
+set 32 until_space:tail
+set 10 until_eol:tail
+
+until_space:readint
+move until_space:result x
+
+until_eol:readint
+move until_eol:result y
+
+until_eol:readint
+move until_eol:result z
+
+print x y z
+
+unload until_space
+unload until_eol
+
+end
+

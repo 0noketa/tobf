@@ -1,0 +1,33 @@
+tail w i e new result
+
+# loads integer to result
+:readint
+    set 1 w
+    while w
+        input i
+        
+        copysub tail  i
+
+        ifelse i e
+            clear new
+
+            set 10  w
+            while w
+                copyadd result  new
+
+                dec w
+            endwhile w
+
+            copyadd tail i
+            sub 48  i
+
+            moveadd i  new
+            copy new  result
+            inc w
+        else i e
+            clear w
+        endifelse i e
+    endwhile w
+
+
+end

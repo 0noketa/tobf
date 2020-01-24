@@ -60,152 +60,7 @@
 #   can not be omitted
 
 import io
-
-def split(s:str, sep=None, maxsplit=-1) -> list:
-    if sep == None:
-        return list(filter(len, map(str.strip, s.strip().split(maxsplit=maxsplit))))
-    else:
-        return list(map(str.strip, s.strip().split(sep=sep, maxsplit=maxsplit)))
-
-class Mainsystem:
-    def has_var(self, name:str) -> bool:
-        return False
-    def addressof(self, name:str) -> int:
-        return 0
-    def valuesof(self, name:str) -> int:
-        """constant"""
-        return 0
-    def put(self, s:str):
-        pass
-    def put_with(self, addr:int, s:str):
-        """>>>something<<<"""
-        pass
-    def put_invoke(self, name:str, args:list):
-        pass
-
-class InstructionBase:
-    def __init__(self, _name, _least_argc = 0):
-        super().__init__()
-        self._name = _name
-        self._least_argc = _least_argc
-    def name(self):
-        return self._name
-    def least_argc(self):
-        return self._least_argc
-    def put(self, main: Mainsystem, args:list):
-        pass
-
-class SubsystemBase:
-    """module-like extension that can be specialized like classes"""
-    def __init__(self, _name:str, _instructions:dict={}, _consts={}, _enums=[], _vars:list=[], _size=-1):
-        self._loaded = False
-        self._offset = 0
-        self._main = None
-        self._initialized = False
-        self._name = _name
-        self._instructions = _instructions.copy()
-        self._consts = _consts.copy()
-        self._enums = _enums.copy()
-        self._vars = _vars.copy()
-        self._size = _size
-    def copy(self, _name:str):
-        r = type(self)(_name)
-        r._main=self._main
-        r._instructions=self._instructions
-        r._consts=self._consts
-        r._enums=self._enums
-        r._vars=self._vars
-        r._size=self._size
-        return r
-    def load(self, offset:int, main:Mainsystem):
-        if self._loaded:
-            return False
-
-        self._offset = offset
-        self._loaded = True
-        self._main = main
-
-        return True
-    def name(self):
-        return self._name
-    def resize(self, size:int):
-        if self._initialized:
-            return
-        self._size = size
-    def has_const(self, name: str) -> bool:
-        return name in self._consts.keys()
-    def add_const(self, name: str, value:int) -> bool:
-        if name.isdigit():
-            return False
-        
-        if not (name in self._consts):
-            self._consts[name] = value
-
-        return True
-    def has_enum(self, name: str) -> bool:
-        return name in self._enums
-    def add_enum(self, name: str) -> bool:
-        if name.isdigit():
-            return False
-        
-        if not (name in self._enums):
-            self._enums.append(name)
-
-        return True
-    def has_var(self, name: str) -> bool:
-        return name in self._vars
-    def add_var(self, name: str) -> bool:
-        if name.isdigit():
-            return False
-        
-        if not (name in self._vars):
-            self._vars.append(name)
-
-        return True
-    def valueof(self, name: str) -> int:
-        if self.has_const(name):
-            return self._consts[name]
-        if self.has_enum(name):
-            return self._enums.index(name)
-
-        return int(name)
-    def addressof(self, name: str) -> int:
-        if self.has_var(name):
-            return self._vars.index(name) + self.offset()
-
-        return self.offset()
-    def add_ins(self, ins: InstructionBase) -> bool:
-        if ins.name() in self._instructions.keys():
-            return False
-
-        self._instructions[ins.name()] = ins
-
-        return True
-    def has_ins(self, name:str, args:list):
-        """arg: args as single string"""
-        if not (name in self._instructions.keys()):
-            return False
-
-        ins: InstructionBase = self._instructions[name]
-
-        return len(args) >= ins.least_argc()
-    def put(self, name:str, args:list):
-        if name == "init" and self._initialized:
-            return
-        if name == "clean" and not self._initialized:
-            return
-
-        ins: InstructionBase = self._instructions[name]
-
-        ins.put(self._main, args)
-
-        if name == "init":
-            self._initialized = True
-    def offset(self):
-        """offset of this subsystem"""
-        return self._offset
-    def size(self):
-        return len(self._vars) if self._size == -1 else self._size
+from base import Mainsystem, SubsystemBase, InstructionBase, split
 
 
 class Tobf(Mainsystem):
@@ -253,7 +108,7 @@ class Tobf(Mainsystem):
     def subsystem_by_name(self, name) -> SubsystemBase:
         """returns a subsystem"""
         if not (name in self._subsystems.keys()):
-            put_err(f"subsystem {name} is not installed")
+            print(f"subsystem {name} is not installed")
             return None
 
         return self._subsystems[name]
@@ -265,21 +120,21 @@ class Tobf(Mainsystem):
             name = self._newest_subsystem_name
 
         if not (name in self._loaded_subsystems.keys()):
-            put_err(f"subsystem aliased as {name} is not loaded")
+            print(f"subsystem aliased as {name} is not loaded")
             return None
 
         return self._loaded_subsystems[name]
 
     def put_load(self, name:str, args:list, alias=""):
         if not (name in self._subsystems.keys()):
-            put_err(f"subsystem {name} is not installed")
+            print(f"subsystem {name} is not installed")
             return False
         
         if alias == "":
             alias = name
 
         if alias in self._loaded_subsystems.keys():
-            put_err(f"subsystem aliased as {alias} is already loaded.")
+            print(f"subsystem aliased as {alias} is already loaded.")
             return False
 
         subsystem_base = self.subsystem_by_name(name)
@@ -348,8 +203,7 @@ class Tobf(Mainsystem):
         elif value.isdigit():
             return int(value)
         else:
-            print(f"failed to get address of {value}")
-            raise "error"
+            raise Exception(f"failed to get address of {value}")
 
     def valueof(self, value) -> int:
         if type(value) != str:
@@ -420,8 +274,7 @@ class Tobf(Mainsystem):
             out_addr = self.addressof(out_var)
 
             if in_addr == out_addr:
-                print(f"move from and to {in_addr}")
-                raise "error"
+                raise Exception(f"move from and to {in_addr}")
 
             self.with_addr(out_addr, "-" if sign == "-" else "+")
 
@@ -547,9 +400,9 @@ class Tobf(Mainsystem):
             sub = self.subsystem_by_alias(sub_name)
 
             if sub == None:
-                raise f"subsystem {sub_name} is not loaded"
+                raise Exception(f"subsystem {sub_name} is not loaded")
             if not sub.has_ins(name, args):
-                raise f"{sub.name()} hasnt {name}"
+                raise Exception(f"{sub.name()} hasnt {name}")
 
             return sub.put(name, args)
 
@@ -659,109 +512,79 @@ class Tobf(Mainsystem):
             return True
 
         if name == "endifelse":
-            v_from = vrs.addressof(args[1])
+            v_from = self.addressof(args[1])
 
             self.downlevel()
             self.with_addr(v_from, "-]")
 
             return True
 
-        print(f"unknown instruction {name}")
-        raise "error"
+        raise Exception(f"unknown instruction {name}")
 
-    def compile_instruction(self, src:str):
-        src = src.strip()
-
-        if src.startswith("#") or len(src) == 0:
-            return True
-
-        name, *args = split(src)
+    def compile_instruction(self, src):
+        if type(src) == str:
+            src = split(src)
+            
+        name, *args = src
 
         return self.put_invoke(name, args)
     
-    def compile_all(self, src:list):
+    def compile_all(self, src:list, comments=False):
         for i in src:
+            if comments:
+                print(" ".join(i) if type(i) == list else i)
             self.compile_instruction(i)
 
         self.put("[-]")
 
+    @staticmethod
+    def read_file(file:str) -> tuple:
+        """returns (size, vars, named_codes)"""
 
+        size = -1
+        vs = []
+        cs = {"main": []}
+        try:
+            f = io.open(file, "r")
+            label = "main"
 
+            mod = file.rsplit(".", maxsplit=1)[0] if "." in file else file
+            vs = split(f.readline())
 
-class Instruction_DefineConst(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=2)
-        self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
-        v = args[0]
-        names = args[1:]
+            if len(vs) > 0 and vs[0].isdigit():
+                size = int(vs[0])
+                vs = vs[1:]
 
-        for name in names:
-            self._sub.add_const(name, self._sub.valueof(v))
-class Instruction_DefineEnum(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=1)
-        self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
-        for name in args:
-            self._sub.add_enum(name)
-class Instruction_DefineVar(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=1)
-        self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
-        for name in args:
-            self._sub.add_var(name)
-class Instruction_ResizeVars(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=1)
-        self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
-        self._sub.resize(int(args[0]))
-class Subsystem_ConstSet(SubsystemBase):
-    """constant definitions"""
-    def __init__(self, _name="constset"):
-        super().__init__(_name)
-        self.add_ins(Instruction_DefineConst("const", self))
-        self.add_ins(Instruction_DefineEnum("enum", self))
-class Subsystem_Consts(SubsystemBase):
-    """constant definitions"""
-    def __init__(self, _name="consts"):
-        super().__init__(_name)
-        self.add_ins(Instruction_DefineConst("def", self))
-class Subsystem_Enums(SubsystemBase):
-    """constant definitions"""
-    def __init__(self, _name="enums"):
-        super().__init__(_name)
-        self.add_ins(Instruction_DefineEnum("def", self))
-class Subsystem_Vars(SubsystemBase):
-    """local variable area"""
-    def __init__(self, _name="vars"):
-        super().__init__(_name)
-        self.add_ins(Instruction_ResizeVars("init", self))
-        self.add_ins(Instruction_DefineVar("def", self))
+            try:
+                while f.readable():
+                    src = f.readline().strip()
 
+                    if len(src) == 0:
+                        continue
+                    if src.startswith("#"):
+                        continue
 
+                    cod = split(src)
 
+                    if cod[0].startswith(":"):
+                        label = cod[0][1:]
+                        if not (label in cs):
+                            cs[label] = []
+                        continue
 
-if __name__ == "__main__":
-    _line = input().strip()
+                    if cod[0] == "end":
+                        break
 
-    while _line.startswith("#"):
-        _line = input().strip()
-    
-    compiler = Tobf(split(_line))
-    compiler.install_subsystem(Subsystem_Enums())
-    compiler.install_subsystem(Subsystem_Consts())
-    compiler.install_subsystem(Subsystem_ConstSet())
-    compiler.install_subsystem(Subsystem_Vars())
+                    cs[label].append(cod)
+            except Exception as e:
+                pass  
 
-    _src = []
-    _line = input().strip()
+            f.close()
+        except Exception as e:
+            print(e)
+            pass
 
-    while _line != "end":
-        _src.append(_line)
-        _line = input().strip()
+        if size == -1:
+            size = len(vs) + 1
 
-    compiler.compile_all(_src)
-
+        return (size, vs, cs)
