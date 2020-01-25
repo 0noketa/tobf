@@ -481,41 +481,49 @@ class Tobf(Mainsystem):
             return True
 
         if name in ["endif", "endwhile"]:
-            addr = self.addressof(args[0])
+            sign, v = self.separate_sign(args[0])
+            addr = self.addressof(v)
 
             self.downlevel()
 
-            self.with_addr(addr, "[-]]" if name == "endif" else "]")
+            self.with_addr(addr,
+                "]" if name == "endwhile"
+                else "-]" if sign == "-"
+                else "[-]]")
 
             return True
 
         if name == "ifelse":
-            v_then = self.addressof(args[0])
-            v_else = self.addressof(args[1])
+            a_then = self.addressof(args[0])
+            s_else, v_else = self.separate_sign(args[1])
+            a_else = self.addressof(v_else)
 
-            self.with_addr(v_else, "[-]+")
-            self.with_addr(v_then, "[")
+            self.with_addr(a_else, "+" if s_else == "+" else "[-]+")
+            self.with_addr(a_then, "[")
             self.uplevel()
 
             return True
 
         if name == "else":
-            v_then = self.addressof(args[0])
-            v_else = self.addressof(args[1])
+            s_then, v_then = self.separate_sign(args[0])
+            s_else, v_else = self.separate_sign(args[1])
+            a_then = self.addressof(v_then)
+            a_else = self.addressof(v_else)
 
             self.downlevel()
-            self.with_addr(v_else, "-")
-            self.with_addr(v_then, "[-]]")
-            self.with_addr(v_else, "[")
+            self.with_addr(a_else, "-" if s_else == "-" else "[-]")
+            self.with_addr(a_then, "-]" if s_then == "-" else "[-]]")
+            self.with_addr(a_else, "[")
             self.uplevel()
 
             return True
 
         if name == "endifelse":
-            v_from = self.addressof(args[1])
+            sign, v = self.separate_sign(args[1])
+            addr = self.addressof(v)
 
             self.downlevel()
-            self.with_addr(v_from, "-]")
+            self.with_addr(addr, "-]" if sign == "-" else "[-]]")
 
             return True
 

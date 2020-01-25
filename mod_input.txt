@@ -1,5 +1,9 @@
 tail w i e new result
 
+:clean
+    # caller should clean
+    # clear result
+
 # loads integer to result
 :readint
     set 1 w
@@ -8,7 +12,7 @@ tail w i e new result
         
         copysub tail  i
 
-        ifelse i e
+        ifelse i +e
             clear new
 
             set 10  w
@@ -24,9 +28,9 @@ tail w i e new result
             moveadd i  new
             copy new  result
             inc w
-        else i e
+        else i -e
             clear w
-        endifelse i e
+        endifelse i -e
     endwhile w
 
 

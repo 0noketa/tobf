@@ -2,7 +2,6 @@ i j  f b n t e cf ci cz cb cu cln
 
 # i: current number
 # j: rest of numbers
-set 1  i
 
 # contains it
 resb 3
@@ -24,6 +23,9 @@ add 10 cln
 # b: 0 to 5 (includes 5)
 set 1 f
 set 1 b
+
+loadas i code mod_dec3
+i:increment
 
 while j
     # is not fizz nor buzz
@@ -48,16 +50,14 @@ while j
     endifelse t e
 
     if n
-        loadas out code mod_print
-            copy i out:arg
-            out:writeint
-        unload out
+        i:write
     endif n
 
     print cln
 
     inc b
     inc f
+    i:increment
 
     inc i
     dec j

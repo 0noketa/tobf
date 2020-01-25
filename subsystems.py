@@ -135,6 +135,17 @@ class Subsystem_Code(SubsystemBase):
         r.add_ins(Instruction_Init("init", r, 1))
         return r
 
+    def make_qname(self, name):
+        if name[0] in ["+", "-"]:
+            sign = name[0]
+            name = name[1:]
+        else:
+            sign = ""
+
+        if self.has_var(name):
+            name = self._name + ":" + name
+
+        return sign + name
 
     def put_init(self, args:list):
         if self._read:
@@ -155,10 +166,7 @@ class Subsystem_Code(SubsystemBase):
                 name = c[0]
                 args = c[1:]
                 
-                args = list(map(lambda x:
-                        self._name + ":" + x if self.has_var(x)
-                            else x,
-                        args))
+                args = list(map(self.make_qname, args))
     
                 c2.append([name] + args)
 

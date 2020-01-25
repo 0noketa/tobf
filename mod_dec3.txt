@@ -1,0 +1,77 @@
+a b c t e z
+
+# 3 columns decimal integer
+
+:init
+    set 48 z
+:clean
+    clear a b c z
+
+:_copyadd_a_t
+    # copy a t
+    move a e
+    moveadd e a t
+:_copyadd_b_t
+    move b e
+    moveadd e b t
+:_copyadd_c_t
+    move c e
+    moveadd e c t
+:_copyadd_z_t
+    move z e
+    moveadd e z t
+:_ifeq_t_10
+    sub 10 t
+    ifelse t +e
+    else t -e
+:_endifeq_t_10
+    endifelse t e
+:increment
+    inc c
+    _copyadd_c_t
+    _ifeq_t_10
+        clear c
+
+        inc b
+        _copyadd_b_t
+        _ifeq_t_10
+            clear b
+
+            inc a
+            _copyadd_a_t
+            _ifeq_t_10
+                clear a
+            _endifeq_t_10
+        _endifeq_t_10
+    _endifeq_t_10
+
+:decrement
+:_write_t
+    _copyadd_z_t
+    print t
+
+:_write_t_ifnz
+    if t
+        _write_t
+    endif t
+
+:write
+    _copyadd_a_t
+    ifelse t +e
+        _write_t
+
+        clear t
+        _copyadd_b_t
+        _write_t
+    else t e
+        _copyadd_b_t
+        _write_t_ifnz
+    endifelse t e
+
+    _copyadd_c_t
+    _write_t
+
+    clear t
+
+end
+

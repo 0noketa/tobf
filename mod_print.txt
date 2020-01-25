@@ -1,0 +1,69 @@
+arg a x b y c z e n m
+
+:clean
+
+:_copyadd_n_m
+    moveadd n e
+    moveadd e n m
+:_copysub_arg_m
+    moveadd arg e
+    move e +arg -m
+
+:writeint
+    clear n
+    clear a
+    add 3 x
+    while x
+        clear b
+        add 10 y
+        while y
+            clear c
+            add 10 z
+            while z
+                _copyadd_n_m
+                _copysub_arg_m
+                ifelse m +e
+                else m -e
+                    dec a
+                    clear x
+                    inc x
+                    dec b
+                    clear y
+                    inc y
+                    dec c
+                    clear z
+                    inc z
+                endifelse m -e
+
+                inc n
+                inc c
+                dec z
+            endwhile z
+
+            inc b
+            dec y
+        endwhile y
+
+        inc a
+        dec x
+    endwhile x
+
+    add 48 e
+
+    if a
+        copyadd e a
+        print a
+    endif a
+
+    if b
+        copyadd e b
+        print b
+    endif b
+
+    moveadd e c
+    print c
+
+    clear arg
+
+end
+
