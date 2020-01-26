@@ -1,15 +1,16 @@
-arg a x b y c z e n m
+a x b y c z e n m
 
 :clean
 
-:_copyadd_n_m
-    moveadd n e
-    moveadd e n m
-:_copysub_arg_m
-    moveadd arg e
-    move e +arg -m
+:_copyadd x y
+    moveadd x e
+    moveadd e x y
+:_copysub x y
+    moveadd x e
+    move e +x -y
 
-:writeint
+# arg: var
+:writeint arg
     clear n
     clear a
     add 3 x
@@ -20,8 +21,8 @@ arg a x b y c z e n m
             clear c
             add 10 z
             while z
-                _copyadd_n_m
-                _copysub_arg_m
+                _copyadd n m
+                _copysub arg m
                 ifelse m +e
                 else m -e
                     dec a
@@ -62,8 +63,6 @@ arg a x b y c z e n m
 
     moveadd e c
     print c
-
-    clear arg
 
 end
 

@@ -1,16 +1,15 @@
-tail w i e new result
+w i e new
 
-:clean
-    # caller should clean
-    # clear result
-
+# tail: const
+# result: var
 # loads integer to result
-:readint
+:readint_until tail result
+    clear result
     set 1 w
     while w
         input i
         
-        copysub tail  i
+        sub tail  i
 
         ifelse i +e
             clear new
@@ -22,7 +21,7 @@ tail w i e new result
                 dec w
             endwhile w
 
-            copyadd tail i
+            add tail i
             sub 48  i
 
             moveadd i  new

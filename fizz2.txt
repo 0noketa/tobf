@@ -6,9 +6,7 @@ i j  f b n t e cf ci cz cb cu cln
 # contains it
 resb 3
 loadas in code mod_input
-    set 10 in:tail
-    in:readint
-    move in:result j
+    in:readint_until 10 j
 unload in
 resb 14
 
@@ -19,8 +17,8 @@ add 20 cz cu
 sub 5 cu
 add 10 cln
 
-# f: 0 to 3 (includes 3)
-# b: 0 to 5 (includes 5)
+# f: 1 to 3 (includes 3)
+# b: 1 to 5 (includes 5)
 set 1 f
 set 1 b
 

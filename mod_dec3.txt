@@ -7,19 +7,15 @@ a b c t e z
 :clean
     clear a b c z
 
-:_copyadd_a_t
+# via e
+:_copyadd x y
     # copy a t
-    move a e
-    moveadd e a t
-:_copyadd_b_t
-    move b e
-    moveadd e b t
-:_copyadd_c_t
-    move c e
-    moveadd e c t
-:_copyadd_z_t
-    move z e
-    moveadd e z t
+    move x e
+    moveadd e x y
+:_moveadd x y
+    clear y
+    _copyadd x y
+
 :_ifeq_t_10
     sub 10 t
     ifelse t +e
@@ -28,17 +24,17 @@ a b c t e z
     endifelse t e
 :increment
     inc c
-    _copyadd_c_t
+    _copyadd c t
     _ifeq_t_10
         clear c
 
         inc b
-        _copyadd_b_t
+        _copyadd b t
         _ifeq_t_10
             clear b
 
             inc a
-            _copyadd_a_t
+            _copyadd a t
             _ifeq_t_10
                 clear a
             _endifeq_t_10
@@ -47,28 +43,27 @@ a b c t e z
 
 :decrement
 :_write_t
-    _copyadd_z_t
+    _copyadd z t
     print t
 
-:_write_t_ifnz
+:_ift mac
     if t
-        _write_t
+        mac
     endif t
 
 :write
-    _copyadd_a_t
+    _copyadd a t
     ifelse t +e
         _write_t
 
-        clear t
-        _copyadd_b_t
+        _moveadd b t
         _write_t
     else t e
-        _copyadd_b_t
-        _write_t_ifnz
+        _copyadd b t
+        _ift _write_t
     endifelse t e
 
-    _copyadd_c_t
+    _copyadd c t
     _write_t
 
     clear t

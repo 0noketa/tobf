@@ -79,15 +79,12 @@ if __name__ == "__main__":
         exit(0)
 
 
-    size, vs, cs = Tobf.read_file(args[0])
-
-    compiler = Tobf(vs)
+    compiler = Tobf()
     compiler.install_subsystem(Subsystem_Enums())
     compiler.install_subsystem(Subsystem_Consts())
     compiler.install_subsystem(Subsystem_ConstSet())
     compiler.install_subsystem(Subsystem_Vars())
     compiler.install_subsystem(Subsystem_Code())
 
-    compiler.reserve(size)
-    compiler.compile_all(cs["main"], verbose)
+    compiler.compile_file(args[0], verbose)
 

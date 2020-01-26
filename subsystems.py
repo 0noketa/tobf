@@ -31,7 +31,7 @@
 #     defines names memory addresses. they works as variable.
 
 import io
-from base import src_extension, Mainsystem, SubsystemBase, InstructionBase
+from base import src_extension, separate_sign, Mainsystem, SubsystemBase, InstructionBase, MacroProc
 
 
 class Instruction_DefineConst(InstructionBase):
@@ -122,20 +122,19 @@ class Subsystem_Vars(SubsystemBase):
     def put_init(self, args:list):
         self._sub.resize(int(args[0]))
 
-
 class Subsystem_Code(SubsystemBase):
     def __init__(self, _name="code"):
         super().__init__(_name)
-        self._codes = {}
+        self._macs = {}
         self._read = False
     def copy(self, _name):
         r = super().copy(_name)
-        r._codes = self._codes.copy()
+        r._codes = self._macs.copy()
         r._read = self._read
         r.add_ins(Instruction_Init("init", r, 1))
         return r
 
-    def make_qname(self, name):
+    def make_qname(self, name, params=[], args=[]):
         if name[0] in ["+", "-"]:
             sign = name[0]
             name = name[1:]
@@ -152,27 +151,17 @@ class Subsystem_Code(SubsystemBase):
             return
 
         file = args[0] + "." + src_extension
-        size, vs, cs = self._main.read_file(file)
+        size, vs, ms = self._main.read_file(file)
 
         self.resize(size)
 
         for v in vs:
             self.add_var(v)
 
-        for key in cs.keys():
-            c2 = []
+        for key in ms.keys():
+            self._macs[key] = ms[key]
 
-            for c in cs[key]:
-                name = c[0]
-                args = c[1:]
-                
-                args = list(map(self.make_qname, args))
-    
-                c2.append([name] + args)
-
-            self._codes[key] = c2
-
-            self.add_ins(Instruction_Pass(key, self, 0))
+            self.add_ins(Instruction_Pass(key, self, len(ms[key].params)))
 
         self._read = True
 
@@ -184,23 +173,38 @@ class Subsystem_Code(SubsystemBase):
         if not self._read and name == "init":
             return True
 
-        return name in self._codes.keys()
+        return name in self._macs.keys()
 
     def put(self, name, args:list):
         if not self._read and name == "init":
             return self.put_init(args)
 
-        if not (name in self._codes.keys()):
-            return
+        if not (name in self._macs.keys()):
+            return Exception(f"unknown instruction {name}")
 
-        cs = self._codes[name]
+        mac = self._macs[name]
 
-        for c in cs:
-            name = c[0]
-            args = c[1:]
+        if len(mac.params) != len(args):
+            raise Exception(f"{name} uses {len(mac.params)} args, got {len(args)}")
 
-            if name in self._codes.keys():
-                name = self._name + ":" + name
+        for c in mac.codes:
+            c2 = c.copy()
 
-            self._main.put_invoke(name, args)
+            for i in range(len(c2)):
+                sign, name = separate_sign(c2[i])
+
+                if name in mac.params:
+                    name = args[mac.params.index(name)]
+                elif i > 0 and (name in self._vars):
+                    name = self._name + ":" + name
+
+                c2[i] = sign + name
+
+            ins_name = c2[0]
+            ins_args = c2[1:]
+
+            if ins_name in self._macs.keys():
+                self.put(ins_name, ins_args)
+            else:
+                self._main.put_invoke(ins_name, ins_args)
 

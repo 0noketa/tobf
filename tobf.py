@@ -60,12 +60,12 @@
 #   can not be omitted
 
 import io
-from base import Mainsystem, SubsystemBase, InstructionBase, split
+from base import Mainsystem, SubsystemBase, InstructionBase, split, separate_sign, MacroProc
 
 
 class Tobf(Mainsystem):
-    def __init__(self, _vars = []):
-        self._vars = _vars
+    def __init__(self):
+        self._vars = []
         self._reserved = -1
         self._subsystems = {}
         self._loaded_subsystems = {}
@@ -108,8 +108,7 @@ class Tobf(Mainsystem):
     def subsystem_by_name(self, name) -> SubsystemBase:
         """returns a subsystem"""
         if not (name in self._subsystems.keys()):
-            print(f"subsystem {name} is not installed")
-            return None
+            raise Exception(f"subsystem {name} is not installed")
 
         return self._subsystems[name]
 
@@ -120,22 +119,19 @@ class Tobf(Mainsystem):
             name = self._newest_subsystem_name
 
         if not (name in self._loaded_subsystems.keys()):
-            print(f"subsystem aliased as {name} is not loaded")
-            return None
+            raise Exception(f"subsystem aliased as {name} is not loaded")
 
         return self._loaded_subsystems[name]
 
     def put_load(self, name:str, args:list, alias=""):
         if not (name in self._subsystems.keys()):
-            print(f"subsystem {name} is not installed")
-            return False
+            raise Exception(f"subsystem {name} is not installed")
         
         if alias == "":
             alias = name
 
         if alias in self._loaded_subsystems.keys():
-            print(f"subsystem aliased as {alias} is already loaded.")
-            return False
+            raise Exception(f"subsystem aliased as {alias} is already loaded.")
 
         subsystem_base = self.subsystem_by_name(name)
         subsystem = subsystem_base.copy(alias)
@@ -253,7 +249,7 @@ class Tobf(Mainsystem):
 
     def clear_vars(self, out_vars:list, force=False):
         for out_var in out_vars:
-            sign, out_var = self.separate_sign(out_var)
+            sign, out_var = separate_sign(out_var)
 
             if not force and sign != "":
                     continue
@@ -270,7 +266,7 @@ class Tobf(Mainsystem):
         self.with_addr(in_addr, "[")
 
         for out_var in out_vars:
-            sign, out_var = self.separate_sign(out_var)
+            sign, out_var = separate_sign(out_var)
             out_addr = self.addressof(out_var)
 
             if in_addr == out_addr:
@@ -308,7 +304,7 @@ class Tobf(Mainsystem):
 
         for out_addr in out_addrs:
             if type(out_addr) == str:
-                sign, out_addr = self.separate_sign(out_addr)        
+                sign, out_addr = separate_sign(out_addr)        
                 addr = self.addressof(out_addr)
             else:
                 sign = ""
@@ -338,12 +334,6 @@ class Tobf(Mainsystem):
                     s = s2
 
         return max(x, y), min(x, y)
-
-    def separate_sign(self, name):
-        if type(name) == str and len(name) > 0 and name[0] in ["+", "-"]:
-            return name[0], name[1:]
-        else:
-            return "", name
 
     def put_cmd(self, value, sign = ""):
         """simple commands for "set" instruction"""
@@ -382,7 +372,7 @@ class Tobf(Mainsystem):
             self.uplevel()
 
         for name in args:
-            sign, name = self.separate_sign(name)
+            sign, name = separate_sign(name)
             addr = self.addressof(name) 
 
             self.begin_global(addr)
@@ -481,7 +471,7 @@ class Tobf(Mainsystem):
             return True
 
         if name in ["endif", "endwhile"]:
-            sign, v = self.separate_sign(args[0])
+            sign, v = separate_sign(args[0])
             addr = self.addressof(v)
 
             self.downlevel()
@@ -495,7 +485,7 @@ class Tobf(Mainsystem):
 
         if name == "ifelse":
             a_then = self.addressof(args[0])
-            s_else, v_else = self.separate_sign(args[1])
+            s_else, v_else = separate_sign(args[1])
             a_else = self.addressof(v_else)
 
             self.with_addr(a_else, "+" if s_else == "+" else "[-]+")
@@ -505,8 +495,8 @@ class Tobf(Mainsystem):
             return True
 
         if name == "else":
-            s_then, v_then = self.separate_sign(args[0])
-            s_else, v_else = self.separate_sign(args[1])
+            s_then, v_then = separate_sign(args[0])
+            s_else, v_else = separate_sign(args[1])
             a_then = self.addressof(v_then)
             a_else = self.addressof(v_else)
 
@@ -519,7 +509,7 @@ class Tobf(Mainsystem):
             return True
 
         if name == "endifelse":
-            sign, v = self.separate_sign(args[1])
+            sign, v = separate_sign(args[1])
             addr = self.addressof(v)
 
             self.downlevel()
@@ -541,17 +531,28 @@ class Tobf(Mainsystem):
         for i in src:
             if comments:
                 print(" ".join(i) if type(i) == list else i)
+
+                if i[0] == "bf":
+                    continue
+
             self.compile_instruction(i)
 
         self.put("[-]")
+    
+    def compile_file(self, file_name, comments=False):
+        size, vars, macros = Tobf.read_file(file_name)
+
+        self._vars = vars
+        self.reserve(size)
+        self.compile_all(macros["main"].codes, comments)
 
     @staticmethod
     def read_file(file:str) -> tuple:
-        """returns (size, vars, named_codes)"""
+        """returns (size, vars, macros)"""
 
         size = -1
         vs = []
-        cs = {"main": []}
+        ms = {"main": MacroProc("main", [], [])}
         try:
             f = io.open(file, "r")
             label = "main"
@@ -576,23 +577,29 @@ class Tobf(Mainsystem):
 
                     if cod[0].startswith(":"):
                         label = cod[0][1:]
-                        if not (label in cs):
-                            cs[label] = []
+
+                        if not (label in ms.keys()):
+                            ms[label] = MacroProc(label, [], [])
+                        
+                        if len(ms[label].params) == 0:
+                            ms[label].params = cod[1:].copy()
+
                         continue
 
                     if cod[0] == "end":
                         break
 
-                    cs[label].append(cod)
+                    ms[label].codes.append(cod)
             except Exception as e:
-                pass  
+                f.close()
+
+                raise e
 
             f.close()
         except Exception as e:
-            print(e)
-            pass
+            raise e
 
         if size == -1:
             size = len(vs) + 1
 
-        return (size, vs, cs)
+        return (size, vs, ms)

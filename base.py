@@ -11,6 +11,13 @@ def split(s:str, sep=None, maxsplit=-1) -> list:
     else:
         return list(map(str.strip, s.strip().split(sep=sep, maxsplit=maxsplit)))
 
+
+def separate_sign(name):
+    if type(name) == str and len(name) > 0 and name[0] in ["+", "-"]:
+        return name[0], name[1:]
+    else:
+        return "", name
+
 class Mainsystem:
     def has_var(self, name:str) -> bool:
         return False
@@ -161,3 +168,9 @@ class SubsystemBase:
     def size(self):
         return len(self._vars) if self._size == -1 else self._size
 
+
+class MacroProc:
+    def __init__(self, name, params, codes):
+        self.name = name
+        self.params = params
+        self.codes = codes
