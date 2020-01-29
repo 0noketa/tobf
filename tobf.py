@@ -95,9 +95,10 @@ class Tobf(Mainsystem):
         for key in self._loaded_subsystems.keys():
             sub = self._loaded_subsystems[key]
             next2 = sub.offset() + sub.size()
+
             if next < next2:
                 next = next2
-        
+
         return next
 
     def offsetof_subsystem(self, alias:str) -> int:
@@ -421,6 +422,25 @@ class Tobf(Mainsystem):
             args = [args[0]] + [sign + x for x in args[1:]]
 
 
+        # ducktype checker (maybe doesnt work well)
+        if name == "is_var":
+            for arg in args[1:]:
+                try:
+                    self.addressof(arg)
+                except Exception as e:
+                    raise Exception(f"type check failed: {arg} should be variable")
+
+            return True
+
+        if name == "is_val":
+            for arg in args[1:]:
+                try:
+                    self.valueof(arg)
+                except Exception as e:
+                    raise Exception(f"type check failed: {arg} should be value")
+
+            return True
+
         if name == "resb":
             size = int(args[0])
             self.reserve(size)
@@ -516,6 +536,57 @@ class Tobf(Mainsystem):
             self.with_addr(addr, "-]" if sign == "-" else "[-]]")
 
             return True
+
+        if name in ["iflt", "endiflt"]:
+            name = "ifgt" if name == "iflt" else "endifgt"
+            right = args[0]
+            left = args[1]
+            args[0] = left
+            args[1] = right
+
+        if name in "ifgt":
+            a_left = self.addressof(args[0])
+            a_right = self.addressof(args[1])
+            a_tmp = self.addressof(args[2])
+
+            self.with_addr(a_tmp, "[-]")
+            self.with_addr(a_left, "[")
+            self.uplevel()
+
+            self.with_addr(a_right, "[")
+            self.with_addr(a_tmp, "+")
+            self.with_addr(0, "+")
+            self.with_addr(a_right, "-]")
+
+            self.with_addr(a_tmp, "[")
+            self.with_addr(a_right, "+")
+            self.with_addr(a_tmp, "-]")
+
+            self.with_addr(a_tmp, "+")
+            self.with_addr(0, "[")
+            self.with_addr(a_tmp, "-")
+            self.with_addr(0, "[-]]")
+            self.with_addr(a_tmp, "[[-]")
+
+
+            return True
+
+        if name in "endifgt":
+            a_left = self.addressof(args[0])
+            a_right = self.addressof(args[1])
+            a_tmp = self.addressof(args[2])
+
+            self.downlevel()
+
+            self.with_addr(a_left, "[-]+")
+            self.with_addr(a_tmp, "[-]]")
+
+            self.with_addr(a_right, "-")
+            self.with_addr(a_left, "-]")
+            self.with_addr(a_right, "[-]")
+
+            return True
+
 
         raise Exception(f"unknown instruction {name}")
 

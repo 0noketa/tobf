@@ -1,0 +1,70 @@
+y0_lo n m o
+
+:@check v
+    is_var v:hi v:lo
+
+:@set h l  v
+    @check v
+    set h v:hi
+    set l v:lo
+:@clear v
+    @set 0 0 v
+:@move x y
+    @check x
+    @check y
+    move x:hi y:hi
+    move x:lo y:lo
+:@copy x y
+    @check x
+    @check y
+    copy x:hi y:hi
+    copy x:lo y:lo
+
+:@if v
+    @check v
+    if v:hi
+        if v:lo
+:@endif v
+    @check v
+        endif v:lo
+    endif v:hi
+
+:@while v
+    @check v
+    copyadd v:hi n
+    copyadd v:lo n
+    while n
+        clear n
+:@endwhile v
+    @check v
+        copyadd v:hi n
+        copyadd v:lo n
+    endwhile n
+
+:_moveadd16 _f _g  _if _endif  x y
+    @check x
+    @check y
+    copyadd y:lo y0_lo
+    _f x:lo y:lo
+    _f x:hi y:hi
+
+    copyadd y:lo n
+    copyadd y0_lo m
+    _if n m o
+        _g y:hi
+    _endif n m o
+
+    clear y0_lo
+
+:@moveadd x y
+    _moveadd16 moveadd inc  iflt endiflt  x y
+:@copyadd x y
+    _moveadd16 copyadd inc  iflt endiflt  x y
+
+:@movesub x y
+    _moveadd16 movesub dec  ifgt endifgt  x y
+:@copysub x y
+    _moveadd16 copysub dec  ifgt endifgt  x y
+
+
+end

@@ -1,0 +1,284 @@
+n m o z
+
+# 6 columns decimal integer
+
+:init
+    set 48 z
+:clean
+    clear z
+ 
+ :@check v
+    is_var v:a v:b v:c v:d v:e v:f
+
+:@set a b c d e f v
+    @check v
+    set a v:a
+    set b v:b
+    set c v:c
+    set d v:d
+    set e v:e
+    set f v:f
+:@clear v
+    @set 0 0 0 0 0 0 v
+:_@move _f x y
+    @check x
+    @check y
+    _f x:a y:a
+    _f x:b y:b
+    _f x:c y:c
+    _f x:d y:d
+    _f x:e y:e
+    _f x:f y:f
+:@move x y
+    _@move move x y
+:@copy x y
+    _@move _copy x y
+
+ # via o
+:_copyadd x y
+    move x o
+    moveadd o x y
+:_copyadd6 x y0 y1 y2 y3 y4 y5
+    move x o
+    moveadd o x y0 y1 y2 y3 y4 y5
+:_copy x y
+    clear y
+    _copyadd x y
+:_copysub x y
+    move x o
+    movesub o x y
+:_copysub6 x y0 y1 y2 y3 y4 y5
+    move x o
+    move o +x -y0 -y1 -y2 -y3 -y4 -y5
+:_copyneg x y
+    clear y
+    _copysub x y
+
+
+:_nop4 x _m _n _f
+:_inc x _m _n  _f v  _next
+    _copyadd v n
+    sub _m n
+    ifelse n o
+        _f v
+    else n -o
+        set _n v
+        _next x _m _n _f
+    endifelse n o
+
+:_inc_f x _m _n _f
+    _inc x _m _n  _f x:f  _inc_e
+:_inc_e x _m _n _f
+    _inc x _m _n  _f x:e  _inc_d
+:_inc_d x _m _n _f
+    _inc x _m _n  _f x:d  _inc_c
+:_inc_c x _m _n _f
+    _inc x _m _n  _f x:c  _inc_b
+:_inc_b x _m _n _f
+    _inc x _m _n  _f x:b  _inc_a
+:_inc_a x _m _n _f
+    _inc x _m _n  _f x:a  _nop4
+
+:@inc x
+    @check x
+    _inc_f x 9 0 inc
+:@dec x
+    @check x
+    _inc_f x 0 9 dec
+
+:_copyifgt9 v n o
+    _copy v n
+    set 9 m
+    ifgt n m o
+
+:_moveadd_dec3 _f_sub _f_inc _f_copyadd x y
+    @check x
+    @check y
+    _f_copyadd x:f y:f
+    _copyifgt9 y:f n o
+        _f_sub 10 y:f
+        _f_inc y:e
+    endifgt n m o
+
+    _f_copyadd x:e y:e
+    _copyifgt9 y:e n o
+        _f_sub 10 y:e
+        _f_inc y:d
+    endifgt n m o
+
+    _f_copyadd x:d y:d
+    _copyifgt9 y:d n o
+        _f_sub 10 y:d
+        _f_inc y:c
+    endifgt n m o
+
+    _f_copyadd x:c y:c
+    _copyifgt9 y:c n o
+        _f_sub 10 y:c
+        _f_inc y:b
+    endifgt n m o
+
+    _f_copyadd x:b y:b
+    _copyifgt9 y:b n o
+        _f_sub 10 y:b
+        _f_inc y:a
+    endifgt n m o
+
+    _f_copyadd x:a y:a
+    _copyifgt9 y:a n o
+        _f_sub 10 y:a
+    endifgt n m o
+
+
+:@moveadd x y
+    _moveadd_dec3 sub inc moveadd  x y
+:@copyadd x y
+    _moveadd_dec3 sub inc _copyadd  x y
+:@movesub x y
+    _movesub_dec3 add dec movesub  x y
+:@copysub x y
+    _movesub_dec3 add dec _copysub  x y
+
+:_copyifelse x n o
+    _copyadd x n
+    ifelse n o
+
+:_copyif x n
+    _copyadd x n
+    if n
+
+:@read x
+    @check x
+    input x:a x:b x:c x:d x:e x:f
+    _copysub6 z x:a x:b x:c x:d x:e x:f
+
+:@write0 x
+    @check x
+    _copyadd6 z x:a x:b x:c x:d x:e x:f
+    print x:a x:b x:c x:d x:e x:f
+    _copysub6 z x:a x:b x:c x:d x:e x:f
+
+:@read_until tail x
+    @check x
+    @clear x
+    input n
+    sub tail n
+    while n
+        add tail n
+        sub 48 n
+        move x:b x:a
+        move x:c x:b
+        move x:d x:c
+        move x:e x:d
+        move x:f x:e
+        move n x:f
+
+        input n
+        sub tail n
+    endwhile n
+
+:@readln x
+    @read_until 10 x
+
+:@writeln0 x
+    @write0 x
+    set 10 n
+    print n
+    clear n
+
+:_write_n
+    _copyadd z n
+    print n
+:_write1 x
+    _copy x n
+    _write_n
+
+:@write x
+    @check x
+    _copy x:a n
+    ifelse n m
+        _write_n
+        _write1 x:b
+        _write1 x:c
+        _write1 x:d
+        _write1 x:e
+    else n m
+        _@write_1 x
+    endifelse n m
+
+    _copy x:f n
+    _write_n
+
+    clear n
+
+:_@write_1 x
+    _copy x:b n
+    ifelse n m
+        _write_n
+        _write1 x:c
+        _write1 x:d
+        _write1 x:e
+    else n m
+        _@write_2 x
+    endifelse n m
+
+:_@write_2 x
+    _copy x:c n
+    ifelse n m
+        _write_n
+        _write1 x:d
+        _write1 x:e
+    else n m
+        _@write_3 x
+    endifelse n m
+
+:_@write_3 x
+    _copy x:d n
+    ifelse n m
+        _write_n
+        _write1 x:e
+    else n m
+        _copy x:d n
+        if n
+            _write_n
+        endif n
+    endifelse n m
+
+:@writeln x
+    @write x
+    set 10 n
+    print n
+    clear n
+
+:_copyfold x n
+    @check x
+    _copyadd x:a n
+    _copyadd x:b n
+    _copyadd x:c n
+    _copyadd x:d n
+    _copyadd x:e n
+    _copyadd x:f n
+
+:@if x
+    @check x
+    moveadd x:b x:a
+    moveadd x:c x:a
+    moveadd x:d x:a
+    moveadd x:e x:a
+    moveadd x:f x:a
+    if x:a
+:@endif x
+    @check x
+    endif x:a
+
+:@while x
+    _copyfold x n
+    while n
+    clear n
+:@endwhile x
+    _copyfold x n
+    endwhile n
+
+
+end
+

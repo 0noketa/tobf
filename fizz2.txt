@@ -1,4 +1,4 @@
-i j  f b n t e cf ci cz cb cu cln
+j  f b n t e cf ci cz cb cu cln
 
 # i: current number
 # j: rest of numbers
@@ -22,8 +22,9 @@ add 10 cln
 set 1 f
 set 1 b
 
-loadas i code mod_dec3
-i:increment
+loadas i vars a b c
+loadas dec code mod_dec3
+dec:@inc i
 
 while j
     # is not fizz nor buzz
@@ -48,16 +49,15 @@ while j
     endifelse t e
 
     if n
-        i:write
+        dec:@write i
     endif n
 
     print cln
 
     inc b
     inc f
-    i:increment
+    dec:@inc i
 
-    inc i
     dec j
 endwhile j
 

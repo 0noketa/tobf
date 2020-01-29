@@ -55,11 +55,11 @@ class SubsystemBase:
         self._loaded = False
         self._offset = 0
         self._main: Mainsystem = None
-        self._initialized = False
         self._name = _name
         self._instructions = _instructions.copy()
         self._consts = _consts.copy()
         self._enums = _enums.copy()
+        self._fixed = False
         self._vars = _vars.copy()
         self._size = _size
     def copy(self, _name:str, _to=None):
@@ -69,6 +69,7 @@ class SubsystemBase:
         r._instructions=self._instructions
         r._consts=self._consts
         r._enums=self._enums
+        r._fixed=self._fixed
         r._vars=self._vars
         r._size=self._size
         return r
@@ -81,13 +82,14 @@ class SubsystemBase:
         self._main = main
 
         return True
-    def is_intialized(self):
-        return self._initialized
     def name(self):
         return self._name
+    def fix(self, _fixed=True):
+        self._fixed = _fixed
     def resize(self, size:int):
-        if self._initialized:
-            return
+        if self._fixed:
+            raise Exception(f"failed to resize fixed area of {self._name}")
+
         self._size = size
     def has_const(self, name: str) -> bool:
         return name in self._consts.keys()
@@ -112,6 +114,8 @@ class SubsystemBase:
     def has_var(self, name: str) -> bool:
         return name in self._vars
     def add_var(self, name: str) -> bool:
+        if self._fixed:
+            raise Exception(f"cant add var to fixed area of {self._name}")
         if name.isdigit():
             return False
         
@@ -130,7 +134,8 @@ class SubsystemBase:
         if self.has_var(name):
             return self._vars.index(name) + self.offset()
 
-        return self.offset()
+        raise Exception(f"unknown var {name}")
+
     def add_ins(self, ins: InstructionBase) -> bool:
         if ins.name() in self._instructions.keys():
             return False
@@ -147,19 +152,17 @@ class SubsystemBase:
 
         return len(args) >= ins.least_argc()
     def put(self, name:str, args:list):
-        if name == "init" and self._initialized:
-            return
+        if name == "init":
+            return self.put_init(args)
         if name == "clean" and not self._initialized:
-            return
+            return self.put_clean(args)
 
         ins: InstructionBase = self._instructions[name]
 
         ins.put(self._main, args)
 
-        if name == "init":
-            self._initialized = True
     def put_init(self, args:list):
-        self._initialized = True
+        pass
     def put_clean(self, args:list):
         pass
     def offset(self):

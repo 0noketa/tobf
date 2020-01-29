@@ -119,8 +119,13 @@ class Subsystem_Vars(SubsystemBase):
         r.add_ins(Instruction_Init("init", r, 1))
         r.add_ins(Instruction_DefineVar("def", r))
         return r
+
     def put_init(self, args:list):
-        self._sub.resize(int(args[0]))
+        if len(args) == 1 and args[0].isdigit():
+            self.resize(int(args[0]))
+        else:
+            for arg in args:
+                self.add_var(arg)
 
 class Subsystem_Code(SubsystemBase):
     def __init__(self, _name="code"):
@@ -152,8 +157,6 @@ class Subsystem_Code(SubsystemBase):
 
         file = args[0] + "." + src_extension
         size, vs, ms = self._main.read_file(file)
-
-        self.resize(size)
 
         for v in vs:
             self.add_var(v)
@@ -193,12 +196,18 @@ class Subsystem_Code(SubsystemBase):
             for i in range(len(c2)):
                 sign, name = separate_sign(c2[i])
 
+                if ":" in name:
+                    sfix = name[name.index(":"):]
+                    name = name[:name.index(":")]
+                else:
+                    sfix = ""
+
                 if name in mac.params:
                     name = args[mac.params.index(name)]
                 elif i > 0 and (name in self._vars):
                     name = self._name + ":" + name
 
-                c2[i] = sign + name
+                c2[i] = sign + name + sfix
 
             ins_name = c2[0]
             ins_args = c2[1:]

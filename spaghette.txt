@@ -1,0 +1,111 @@
+ch0 ch x len arg result
+
+# removes spaces and makes every line 80 chars
+
+loadas b code mod_jump
+
+# local labels
+loadas b2 code mod_jump
+
+# aliases for global labels
+loadas L enums
+
+L:def entry
+L:def sub_read
+L:def sub_write
+L:def main main_2 main_3 main_4 main_5 main_6 main_7 main_8 main_9 main_10
+L:def exit
+
+b:@begin L:entry
+    b:@flat_call set L:sub_read L:main
+
+# subroutine  input with filter
+b:@at L:sub_read
+    b2:@begin 0
+        move ch ch0
+
+    b2:@at 1
+        input ch
+
+    # drop lf
+    b2:@at 2
+        copy ch x
+        sub 10 x
+        b2:@goto_if x set 4
+    b2:@at 3
+        b2:@goto set 1
+
+    # drop cr
+    b2:@at 4
+        copy ch x
+        sub 13 x
+        b2:@goto_if x set 6
+    b2:@at 5
+        b2:@goto set 1
+
+    # drop space
+    b2:@at 6
+        copy ch x
+        sub 32 x
+        b2:@goto_if x set 8
+    b2:@at 7
+        b2:@goto set 1
+
+    # drop tab
+    b2:@at 8
+        copy ch x
+        sub 8 x
+        b2:@goto_if x set 10
+    b2:@at 9
+        b2:@goto set 1
+
+    b2:@at 10
+        b2:@goto set 255
+    b2:@end 255
+
+    b:@flat_return
+
+# subroutine  print ch0 with auto newline
+b:@at L:sub_write
+    b2:@begin 0
+        copy ch0 x
+        print x
+        inc len
+
+        copy len x
+        sub 80 x
+        b2:@goto_if x set 255
+    b2:@at 1
+        set 10 x
+        print x
+        clear len
+        b2:@goto set 255
+    b2:@end 255
+
+    b:@flat_return
+
+# main routine
+b:@at L:main
+    b:@flat_call set L:sub_read L:main_2
+
+# exit on 0
+b:@at L:main_2
+    copy ch0 x
+    b:@goto_if x set L:main_4
+b:@at L:main_3
+    b:@goto set L:exit
+
+# exit on 255
+b:@at L:main_4
+    copy ch0 x
+    inc x
+    b:@goto_if x set L:main_6
+b:@at L:main_5
+    b:@goto set L:exit
+
+b:@at L:main_6
+    b:@flat_call set L:sub_write L:main
+b:@end L:exit
+
+end
+

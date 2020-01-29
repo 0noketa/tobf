@@ -1,72 +1,211 @@
-a b c t e z
+n m e z
 
 # 3 columns decimal integer
 
 :init
     set 48 z
 :clean
-    clear a b c z
+    clear z
 
-# via e
+:@check v
+    is_var v:a v:b v:c
+
+:@set a b c v
+    @check v
+    set a v:a
+    set b v:b
+    set c v:c
+:@clear v
+    @set 0 0 0 v
+:@move x y
+    @check x
+    @check y
+    move x:a y:a
+    move x:b y:b
+    move x:c y:c
+:@copy x y
+    @check x
+    @check y
+    _copy x:a y:a
+    _copy x:b y:b
+    _copy x:c y:c
+
+ # via e
 :_copyadd x y
-    # copy a t
     move x e
     moveadd e x y
-:_moveadd x y
+:_copyadd3 x y0 y1 y2
+    move x e
+    moveadd e x y0 y1 y2
+:_copy x y
     clear y
     _copyadd x y
+:_copysub x y
+    move x e
+    movesub e x y
+:_copysub3 x y0 y1 y2
+    move x e
+    move e +x -y0 -y1 -y2
+:_copyneg x y
+    clear y
+    _copysub x y
 
-:_ifeq_t_10
-    sub 10 t
-    ifelse t +e
-    else t -e
-:_endifeq_t_10
-    endifelse t e
-:increment
-    inc c
-    _copyadd c t
-    _ifeq_t_10
-        clear c
 
-        inc b
-        _copyadd b t
-        _ifeq_t_10
-            clear b
+:_nop2 x _m _n _f
+:_inc x _m _n  _f v  _next
+    _copyadd v n
+    sub _m n
+    ifelse n e
+        _f v
+    else n -e
+        set _n v
+        _next x _m _n _f
+    endifelse n e
 
-            inc a
-            _copyadd a t
-            _ifeq_t_10
-                clear a
-            _endifeq_t_10
-        _endifeq_t_10
-    _endifeq_t_10
+:_inc_c x _m _n _f
+    _inc x _m _n  _f x:c  _inc_b
+:_inc_b x _m _n _f
+    _inc x _m _n  _f x:b  _inc_a
+:_inc_a x _m _n _f
+    _inc x _m _n  _f x:a  _nop2
 
-:decrement
-:_write_t
-    _copyadd z t
-    print t
+:@inc x
+    @check x
+    _inc_c x 9 0 inc
+:@dec x
+    @check x
+    _inc_c x 0 9 dec
 
-:_ift mac
-    if t
-        mac
-    endif t
+:_copyifgt9 v n e
+    _copy v n
+    set 9 m
+    ifgt n m e
 
-:write
-    _copyadd a t
-    ifelse t +e
-        _write_t
+:_moveadd_dec3 _f_sub _f_inc _f_copyadd x y
+    @check x
+    @check y
+    _f_copyadd x:c y:c
+    _copyifgt9 y:c n e
+        _f_sub 10 y:c
+        _f_inc y:b
+    endifgt n m e
 
-        _moveadd b t
-        _write_t
-    else t e
-        _copyadd b t
-        _ift _write_t
-    endifelse t e
+    _f_copyadd x:b y:b
+    _copyifgt9 y:b n e
+        _f_sub 10 y:b
+        _f_inc y:a
+    endifgt n m e
 
-    _copyadd c t
-    _write_t
+    _f_copyadd x:a y:a
+    _copyifgt9 y:a n e
+        _f_sub 10 y:a
+    endifgt n m e
 
-    clear t
+
+:@moveadd x y
+    _moveadd_dec3 sub inc moveadd  x y
+:@copyadd x y
+    _moveadd_dec3 sub inc _copyadd  x y
+:@movesub x y
+    _movesub_dec3 add dec movesub  x y
+:@copysub x y
+    _movesub_dec3 add dec _copysub  x y
+
+:_copyifelse x n e
+    _copyadd x n
+    ifelse n e
+
+:_copyif x n
+    _copyadd x n
+    if n
+
+:@read x
+    @check x
+    input x:a x:b x:c
+    _copysub3 z x:a x:b x:c
+
+:@write0 x
+    @check x
+    _copyadd3 z x:a x:b x:c
+    print x:a x:b x:c
+    _copysub3 z x:a x:b x:c
+
+:@read_until tail x
+    @check x
+    @clear x
+    input n
+    sub tail n
+    while n
+        add tail n
+        sub 48 n
+        move x:b x:a
+        move x:c x:b
+        move n x:c
+
+        input n
+        sub tail n
+    endwhile n
+
+:@readln x
+    @read_until 10 x
+
+:@writeln0 x
+    @write0 x
+    set 10 n
+    print n
+    clear n
+
+:_write_n
+    _copyadd z n
+    print n
+
+:@write x
+    @check x
+    _copy x:a n
+    ifelse n e
+        _write_n
+        _copy x:b n
+        _write_n
+    else n e
+        _copy x:b n
+        if n
+            _write_n
+        endif n
+    endifelse n e
+
+    _copy x:c n
+    _write_n
+
+    clear n
+:@writeln x
+    @write x
+    set 10 n
+    print n
+    clear n
+
+:_copyfold x n
+    @check x
+    _copyadd x:a n
+    _copyadd x:b n
+    _copyadd x:c n
+
+:@if x
+    @check x
+    moveadd x:b x:a
+    moveadd x:c x:a
+    if x:a
+:@endif x
+    @check x
+    endif x:a
+
+:@while x
+    _copyfold x n
+    while n
+    clear n
+:@endwhile x
+    _copyfold x n
+    endwhile n
+
 
 end
 

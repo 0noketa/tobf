@@ -1,0 +1,22 @@
+
+loadas dec code mod_dec3
+loadas x vars a b c
+loadas y vars a b c
+loadas z vars a b c
+loadas n vars a b c
+
+dec:@set 0 0 1 x
+
+dec:@readln n
+dec:@while n
+    dec:@writeln x
+
+    dec:@copy x z
+    dec:@moveadd y x
+    dec:@move z y
+
+    dec:@dec n
+dec:@endwhile n
+
+end
+
