@@ -31,14 +31,20 @@ y0_lo n m o
 
 :@while v
     @check v
-    copyadd v:hi n
-    copyadd v:lo n
+    copyadd v:hi n m
+    ifelse m o
+    else m o
+        copyadd v:lo n
+    endifelse m o
     while n
         clear n
 :@endwhile v
     @check v
-        copyadd v:hi n
-        copyadd v:lo n
+        copyadd v:hi n m
+        ifelse m o
+        else m o
+            copyadd v:lo n
+        endifelse m o
     endwhile n
 
 :_moveadd16 _f _g  _if _endif  x y

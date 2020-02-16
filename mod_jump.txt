@@ -4,38 +4,38 @@ current_label next_label return_label continue n m
 
 
 :@begin _n
-	clear current_label next_label
+    clear current_label next_label
     inc continue
-	while continue
-		copy next_label current_label 
-		inc next_label
+    while continue
+        copy next_label current_label 
+        inc next_label
 
-		copy current_label n
-		sub _n n
-		ifelse n +m
-		else n -m
+        copy current_label n
+        sub _n n
+        ifelse n +m
+        else n -m
 
 :@at _n
-		endifelse n m
+        endifelse n m
 
-		copy current_label n
-		sub _n n
-		ifelse n +m
-		else n -m
+        copy current_label n
+        sub _n n
+        ifelse n +m
+        else n -m
 
 :@end _n
-	@at _n
-			clear continue
-		endifelse n -m
-	endwhile continue
+    @at _n
+            clear continue
+        endifelse n -m
+    endwhile continue
 
 :@goto _set _n
     _set _n next_label
 
 :@goto_if _x _set _n
-	if _x
-		@goto _set _n
-	endif _x
+    if _x
+        @goto _set _n
+    endif _x
 
 :@flat_call _set _n _m
     _set _n next_label

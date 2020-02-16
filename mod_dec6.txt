@@ -250,6 +250,15 @@ n m o z
     print n
     clear n
 
+# moveadd to :a
+:_movefold x
+    @check x
+    moveadd x:b x:a
+    moveadd x:c x:a
+    moveadd x:d x:a
+    moveadd x:e x:a
+    moveadd x:f x:a
+
 :_copyfold x n
     @check x
     _copyadd x:a n
@@ -260,22 +269,28 @@ n m o z
     _copyadd x:f n
 
 :@if x
-    @check x
-    moveadd x:b x:a
-    moveadd x:c x:a
-    moveadd x:d x:a
-    moveadd x:e x:a
-    moveadd x:f x:a
+    _movefold x
     if x:a
 :@endif x
     @check x
     endif x:a
+
+:@ifelse x y
+    _movefold x
+    ifelse x:a y
+:@else x y
+    @check x
+    else x:a y
+:@endifelse x y
+    @check x
+    endifelse x:a y
 
 :@while x
     _copyfold x n
     while n
     clear n
 :@endwhile x
+    clear n
     _copyfold x n
     endwhile n
 
