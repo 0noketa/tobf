@@ -91,7 +91,7 @@ n m o z
     set 9 m
     ifgt n m o
 
-:_moveadd_dec3 _f_sub _f_inc _f_copyadd x y
+:_moveadd_dec _f_sub _f_inc _f_copyadd x y
     @check x
     @check y
     _f_copyadd x:f y:f
@@ -131,13 +131,13 @@ n m o z
 
 
 :@moveadd x y
-    _moveadd_dec3 sub inc moveadd  x y
+    _moveadd_dec sub inc moveadd  x y
 :@copyadd x y
-    _moveadd_dec3 sub inc _copyadd  x y
+    _moveadd_dec sub inc _copyadd  x y
 :@movesub x y
-    _movesub_dec3 add dec movesub  x y
+    _movesub_dec add dec movesub  x y
 :@copysub x y
-    _movesub_dec3 add dec _copysub  x y
+    _movesub_dec add dec _copysub  x y
 
 :_copyifelse x n o
     _copyadd x n
@@ -238,7 +238,7 @@ n m o z
         _write_n
         _write1 x:e
     else n m
-        _copy x:d n
+        _copy x:e n
         if n
             _write_n
         endif n
@@ -269,27 +269,34 @@ n m o z
     _copyadd x:f n
 
 :@if x
-    _movefold x
-    if x:a
+    @check x
+    _copyfold x n
+    if n
 :@endif x
     @check x
-    endif x:a
+    _copyfold x n
+    endif n
+    @clear x
 
 :@ifelse x y
-    _movefold x
-    ifelse x:a y
+    @check x
+    _copyfold x n
+    ifelse n y
 :@else x y
     @check x
-    else x:a y
+    else n y
 :@endifelse x y
     @check x
-    endifelse x:a y
+    endifelse n y
+    @clear x
 
 :@while x
+    @check x
     _copyfold x n
     while n
     clear n
 :@endwhile x
+    @check x
     clear n
     _copyfold x n
     endwhile n
