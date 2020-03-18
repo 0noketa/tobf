@@ -2,18 +2,18 @@ size rest c
 
 # hand_written bf should be better than this
 
-mem2_init 255
+load mem 255
 
 set 255 rest
 while rest
-    mem2_set input size
+    mem:@set input size
     inc size
     dec rest
 endwhile rest
 
 while size
     dec size
-    mem2_set print size
+    mem:@set print size
 endwhile size
 
 set 10 c

@@ -1,20 +1,17 @@
 
 # a to-bf compiler for small outouts
 # abi:
-#   dynamic_addressing: every address is 8bits. only 256 bytes.
-#     16bits addressing is planned as that cant be used both systems in once.
-#     ex: initialize as 8bit addrs -> use -> clean -> initialize as 16bit addrs.
 #   pointer: always points address 0 with value 0 at the beggining and the end
 #   memory: temporary, ...vars, dynamic_memory
-#     area of vars has no hidden workspace expects address 0).
+#     area of vars has no hidden workspace expects address 0. can be used like common-vars in old fortran.
 #     dynamic_memory is optional. nothing exists until initialized manually. and can be cleaned up.
 # linking(not yet):
 #   sequencial or macro-injection.
 #   linkers are required to read only first lines of every source.
 # syntax:
 #   program: var_decl "\n" instructions "end" "\n"
-#   var_decl: id (" " id)*
-#   instructions: (id (" " id)* "\n")*
+#   var_decl: id (" " val)*
+#   instructions: (id (" " val)* "\n")*
 # instructions:
 # set imm ...out_vars_with_sign
 #   every destination can starts with "+" or "-", they means add or sub instead of set 
@@ -47,11 +44,13 @@
 # subsystem_name.any_name ...args
 #   invokes a feature of subsystem
 # if cond_var
+#   cond_var is avarable until endif
 # endif cond_var
 #   like "next i" in basic. this rule simplifies compiler.
 #   currently compiler disallows no cond_var instructions.
 # ifelse cond_var work_var
 #   work_var carries run_else flag
+#   cond_var is avarable until "else"
 # else cond_var work_var
 # endifelse cond_var work_var
 # while cond_var
@@ -60,7 +59,7 @@
 #   can not be omitted
 
 import io
-from base import Mainsystem, SubsystemBase, InstructionBase, split, separate_sign, MacroProc
+from base import Mainsystem, SubsystemBase, InstructionBase, split, separate_sign, calc_small_pair, MacroProc
 
 
 class Tobf(Mainsystem):
@@ -186,6 +185,17 @@ class Tobf(Mainsystem):
         return name in self._vars
     def addressof_var(self, name:str) -> int:
         return int(self._vars.index(name) + 1)
+
+    def is_var(self, value) -> bool:
+        if type(value) != str:
+            return False
+        elif ":" in value:
+            sub_name, name = split(value, sep=":", maxsplit=1)
+            sub = self.subsystem_by_alias(sub_name)
+
+            return sub.has_var(name)
+        else:
+            return self.has_var(value)
 
     def addressof(self, value) -> int:
         if type(value) != str:
@@ -315,27 +325,6 @@ class Tobf(Mainsystem):
 
         self.put("-]")
 
-    def calc_small_pair(self, n, vs):
-        """n: result0 * result1\n
-        vs: num of vars\n
-        +{result0}[>+{result1}<-]"""
-
-        n = n % 256
-        x = 1
-        y = 256
-        s = 256
-        for i in range(1, 256):
-            if n % i == 0:
-                j = n // i
-                s2 = int(i + j * vs)
-
-                if s2 < s:
-                    x = i
-                    y = j
-                    s = s2
-
-        return max(x, y), min(x, y)
-
     def put_cmd(self, value, sign = ""):
         """simple commands for "set" instruction"""
         if value == "input":
@@ -357,7 +346,7 @@ class Tobf(Mainsystem):
 
         if not (m in ["input", "print"]):
             n = int(m)
-            n, m = self.calc_small_pair(n, len(args))
+            n, m = calc_small_pair(n, len(args))
             value = m
 
             self.clear_vars(args)

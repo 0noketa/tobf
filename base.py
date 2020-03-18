@@ -18,8 +18,35 @@ def separate_sign(name):
     else:
         return "", name
 
+def calc_small_pair(n, vs):
+    """n: result0 * result1\n
+    vs: num of vars\n
+    {result0} > {result1}\n
+    usage: +{result0}[>+{result1}<-]"""
+
+    n = n % 256
+    x = 1
+    y = 256
+    s = 256
+    for i in range(1, 256):
+        if n % i == 0:
+            j = n // i
+            s2 = int(i + j * vs)
+
+            if s2 < s:
+                x = i
+                y = j
+                s = s2
+
+    return max(x, y), min(x, y)
+
+
 class Mainsystem:
+    def is_var(self, value) -> bool:
+        """is valid variable"""
+        return False
     def has_var(self, name:str) -> bool:
+        """is valid variable of main"""
         return False
     def addressof(self, name:str) -> int:
         return 0
@@ -29,7 +56,7 @@ class Mainsystem:
     def put(self, s:str):
         pass
     def put_with(self, addr:int, s:str):
-        """>>>something<<<"""
+        """\>\>\>something<<<"""
         pass
     def put_invoke(self, name:str, args:list):
         pass
@@ -151,6 +178,17 @@ class SubsystemBase:
         ins: InstructionBase = self._instructions[name]
 
         return len(args) >= ins.least_argc()
+    def can_skip(self) -> bool:
+        """returns True if this class has shorter version of address calculator"""
+        return False
+    def put_skip_right(self):
+        """skip right area for this subsystem.\n
+        when called, pointer is pointing first cell of this subsystem.\n
+        after calling, points next to the last cell."""
+        self._main.put(">" * self.size())
+    def put_skip_left(self):
+        """skip left area for this subsystem"""
+        self._main.put("<" * self.size())
     def put(self, name:str, args:list):
         if name == "init":
             return self.put_init(args)
@@ -166,7 +204,7 @@ class SubsystemBase:
     def put_clean(self, args:list):
         pass
     def offset(self):
-        """offset of this subsystem"""
+        """offset base of this subsystem"""
         return self._offset
     def size(self):
         return len(self._vars) if self._size == -1 else self._size

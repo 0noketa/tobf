@@ -62,6 +62,8 @@
 from base import Mainsystem, SubsystemBase, InstructionBase, split
 from tobf import Tobf
 from subsystems import Subsystem_ConstSet, Subsystem_Consts, Subsystem_Enums, Subsystem_Vars, Subsystem_Code
+from sub_mem import Subsystem_Memory
+from sub_str import Subsystem_Str
 
 
 if __name__ == "__main__":    
@@ -85,6 +87,8 @@ if __name__ == "__main__":
     compiler.install_subsystem(Subsystem_ConstSet())
     compiler.install_subsystem(Subsystem_Vars())
     compiler.install_subsystem(Subsystem_Code())
+    compiler.install_subsystem(Subsystem_Memory())
+    compiler.install_subsystem(Subsystem_Str())
 
     compiler.compile_file(args[0], verbose)
 

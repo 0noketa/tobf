@@ -1,0 +1,41 @@
+n c
+loadas ptr vars p q r
+loadas x mem 4
+loadas y mem 4
+
+# x is ABCD
+x:@set 65 0
+x:@set 66 1
+x:@set 67 2
+x:@set 68 3
+
+# y is EEEE
+y:@set 69 0 1 2 3
+
+# EEEE to EAEA
+set 0 ptr:p
+set 1 ptr:q
+set 3 ptr:r
+x:@r_copy ptr:p n
+y:@w_copy n ptr:q ptr:r
+
+# print x
+set 0 ptr:p
+set 4 n
+while n
+    # mem address at @set can be variable
+    x:@set print ptr:p
+    inc ptr:p
+    dec n
+endwhile n
+
+# print y
+set 0 ptr:p
+set 4 n
+while n
+    y:@set print ptr:p
+    inc ptr:p
+    dec n
+endwhile n
+
+end

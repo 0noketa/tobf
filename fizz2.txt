@@ -4,11 +4,11 @@ j  f b n t e cf ci cz cb cu cln
 # j: rest of numbers
 
 # contains it
-resb 3
+resb 2
 loadas in code mod_input
     in:readint_until 10 j
 unload in
-resb 14
+resb 13
 
 add 70 cf ci cb cz cu
 add 3 ci
@@ -19,8 +19,7 @@ add 10 cln
 
 # f: 1 to 3 (includes 3)
 # b: 1 to 5 (includes 5)
-set 1 f
-set 1 b
+set 1 f b
 
 loadas i vars a b c
 loadas dec code mod_dec3
@@ -32,21 +31,19 @@ while j
 
     copy f t
     sub 3 t
-    ifelse t e
-    else t e
+    ifelse t +e
+    else t -e
         print cf ci cz cz
-        clear n
-        clear f
-    endifelse t e
+        clear n f
+    endifelse t -e
 
     copy b t
     sub 5 t
-    ifelse t e
-    else t e
+    ifelse t +e
+    else t -e
         print cb cu cz cz
-        clear n
-        clear b
-    endifelse t e
+        clear n b
+    endifelse t -e
 
     if n
         dec:@write i
@@ -54,8 +51,7 @@ while j
 
     print cln
 
-    inc b
-    inc f
+    inc b f
     dec:@inc i
 
     dec j

@@ -1,6 +1,6 @@
 len max_chars rest_chars rest_mem c e p q lines rest_lines
 
-mem2_init 255
+load mem 255
 
 set 255 rest_mem
 set 4 lines
@@ -26,7 +26,7 @@ while rest_lines
         sub 10 c
         ifelse c e
             add 10 c
-            mem2_w_move c q
+            mem:@w_move c q
 
             inc q
             inc len
@@ -43,7 +43,7 @@ while rest_lines
         endifelse c e
     endwhile rest_chars
 
-    mem2_w_move len p
+    mem:@w_move len p
     copyadd max_chars p
     dec rest_lines
 endwhile rest_lines
@@ -52,12 +52,12 @@ endwhile rest_lines
 set 0 p
 copy lines rest_lines
 while rest_lines
-    mem2_r_copy p rest_chars
+    mem:@r_copy p rest_chars
     copy p q
     inc q
 
     while rest_chars
-        mem2_r_copy q c
+        mem:@r_copy q c
         print c
         inc q
         dec rest_chars

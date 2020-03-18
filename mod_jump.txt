@@ -44,4 +44,15 @@ current_label next_label return_label continue n m
 :@flat_return
     move return_label next_label
 
+# requires
+#  loadas callstack vars sp
+#  loadas callstack_stack mem any_number
+:@call _set _n _m
+    _set _n next_label
+    callstack_stack:@w_copy _m callstack:sp
+    inc callstack:sp
+:@return
+    dec callstack:sp
+    callstack_stack:@r_copy callstack:sp next_label
+
 end
