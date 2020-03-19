@@ -45,6 +45,23 @@ class Instruction_DefineConst(InstructionBase):
         for name in names:
             self._sub.add_const(name, main.valueof(v))
 
+class Instruction_IncrementConst(InstructionBase):
+    def __init__(self, _name, _sub: SubsystemBase):
+        super().__init__(_name, _least_argc=1)
+        self._sub = _sub
+    def put(self, main: Mainsystem, args:list):
+        for name in args:
+            self._sub.replace_const(name, str(int(self._sub.valueof(name)) + 1))
+
+class Instruction_RedefineConst(InstructionBase):
+    def __init__(self, _name, _sub: SubsystemBase):
+        super().__init__(_name, _least_argc=2)
+        self._sub = _sub
+    def put(self, main: Mainsystem, args:list):
+        v = args[0]
+        for name in args[1:]:
+            self._sub.replace_const(name, main.valueof(v))
+
 class Instruction_DefineEnum(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase):
         super().__init__(_name, _least_argc=1)
@@ -99,6 +116,8 @@ class Subsystem_Consts(SubsystemBase):
     def copy(self, name):
         r = super().copy(name)
         r.add_ins(Instruction_DefineConst("def", r))
+        r.add_ins(Instruction_IncrementConst("inc", r))
+        r.add_ins(Instruction_RedefineConst("redef", r))
         return r
 
 class Subsystem_Enums(SubsystemBase):
@@ -118,6 +137,7 @@ class Subsystem_Vars(SubsystemBase):
         r = super().copy(name)
         r.add_ins(Instruction_Init("init", r, 1))
         r.add_ins(Instruction_DefineVar("def", r))
+
         return r
 
     def put_init(self, args:list):

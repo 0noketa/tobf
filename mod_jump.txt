@@ -4,7 +4,7 @@ current_label next_label return_label continue n m
 
 
 :@begin _n
-    clear current_label next_label
+    is_val _n
     inc continue
     while continue
         copy next_label current_label 
@@ -16,6 +16,7 @@ current_label next_label return_label continue n m
         else n -m
 
 :@at _n
+    is_val _n
         endifelse n m
 
         copy current_label n
@@ -25,7 +26,7 @@ current_label next_label return_label continue n m
 
 :@end _n
     @at _n
-            clear continue
+            clear current_label next_label return_label continue
         endifelse n -m
     endwhile continue
 
@@ -44,15 +45,82 @@ current_label next_label return_label continue n m
 :@flat_return
     move return_label next_label
 
+
+# with_stack version
 # requires
-#  loadas callstack vars sp
-#  loadas callstack_stack mem any_number
-:@call _set _n _m
-    _set _n next_label
-    callstack_stack:@w_copy _m callstack:sp
+#  loadas callstack  vars sp
+#  loadas callstack_labels  consts
+#  callstack_labels:def 0  current
+#  loadas callstack_stack  mem any_number
+:@check_callstack
+    is vars callstack
+    is_var callstack:sp
+    is consts callstack_labels
+    is_val callstack_labels:current
+    is_sub callstack_stack
+
+:@load_callstack _n
+    is_val _n
+    loadas callstack vars sp
+    loadas callstack_stack mem _n
+    loadas callstack_labels consts
+    callstack_labels:def 0 current
+:@unload_callstack
+    unload callstack_labels
+    unload callstack_stack
+    clear callstack:sp
+    unload callstack
+
+:@begin_at_current _n
+    @check_callstack
+    is_val _n
+
+    callstack_labels:redef 0 current
+    @begin callstack_labels:current
+:@at_current _n
+    @check_callstack
+    is_val _n
+
+    callstack_labels:redef _n current
+    @at callstack_labels:current
+:@end_at_current _n
+    @check_callstack
+    is_val _n
+
+    callstack_labels:redef _n current
+    @end callstack_labels:current
+
+:@call_set _n
+    @check_callstack
+    is_val _n
+
+    set _n next_label
+    callstack_labels:inc current
+    callstack_stack:@set callstack_labels:current callstack:sp
     inc callstack:sp
+    @at callstack_labels:current
+:@call_move _n
+    @check_callstack
+    is_var _n
+
+    move _n next_label
+    callstack_labels:inc current
+    callstack_stack:@set callstack_labels:current callstack:sp
+    inc callstack:sp
+    @at callstack_labels:current
+:@call_copy _n
+    @check_callstack
+    is_var _n
+
+    copy _n next_label
+    callstack_labels:inc current
+    callstack_stack:@set callstack_labels:current callstack:sp
+    inc callstack:sp
+    @at callstack_labels:current
 :@return
+    @check_callstack
+
     dec callstack:sp
-    callstack_stack:@r_copy callstack:sp next_label
+    callstack_stack:@r_move callstack:sp next_label
 
 end

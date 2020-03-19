@@ -2,7 +2,7 @@ chr e
 loadas d code mod_dec6
 loadas len vars a b c d e f
 # large str placed at the lest does not affect to codesize
-loadas s str 1000000
+loadas s str 999999
 
 s:@set input:
 s:@write

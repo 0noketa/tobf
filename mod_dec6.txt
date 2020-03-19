@@ -18,6 +18,54 @@ n m o z
     set d v:d
     set e v:e
     set f v:f
+
+:@w_move_str s v
+    @check v
+    # is str s
+
+    @clear v
+
+    s:@drop n
+    while n
+        @lsh v
+        copysub z n
+        @w_movelowest n +v:f
+        s:@drop +n
+    endwhile n
+
+:@lsh v
+    @check v
+    move v:b v:a
+    move v:c v:b
+    move v:d v:c
+    move v:e v:d
+    move v:f v:e
+    clear v:f
+:@rsh v
+    @check v
+    move v:e v:f
+    move v:d v:e
+    move v:c v:d
+    move v:b v:c
+    move v:a v:b
+    clear v:a
+:@r_copylowest v out
+    @check v
+    is_var out
+    copy v:c out
+:@r_movelowest v out
+    @check v
+    is_var out
+    move v:c out
+:@w_copylowest in v
+    @check v
+    is_var in
+    copy in v:c
+:@w_movelowest in v
+    @check v
+    is_var in
+    move in v:c
+
 :@clear v
     @set 0 0 0 0 0 0 v
 :_@move _f x y

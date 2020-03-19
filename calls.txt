@@ -1,0 +1,48 @@
+
+loadas b code mod_jump
+b:@load_callstack 32
+
+loadas s str 16
+
+b:@begin_at_current 0
+    s:@+set A
+    s:@writeln
+    b:@call_set 10
+
+    # current label is 1  every call until 9th is valid 
+
+    b:@call_set 10
+
+    s:@+set a
+    s:@writeln
+    b:@goto set 255
+
+b:@at_current 10
+    s:@+set B
+    s:@writeln
+    b:@call_set 20
+
+    s:@+set b
+    s:@writeln
+    b:@return
+
+b:@at_current 20
+    s:@+set C
+    s:@writeln
+    b:@call_set 30
+
+    s:@+set c
+    s:@writeln
+    b:@return
+
+b:@at_current 30
+    s:@+set D
+    s:@writeln
+    b:@return
+
+b:@end_at_current 255
+
+s:@writeln
+
+
+end

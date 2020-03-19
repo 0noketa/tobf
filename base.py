@@ -82,6 +82,7 @@ class SubsystemBase:
         self._loaded = False
         self._offset = 0
         self._main: Mainsystem = None
+        self._basename = ""
         self._name = _name
         self._instructions = _instructions.copy()
         self._consts = _consts.copy()
@@ -92,6 +93,7 @@ class SubsystemBase:
     def copy(self, _name:str, _to=None):
         if _to == None:
             r = type(self)(_name)
+        r._basename = self._name if self._basename == "" else self._basename
         r._main=self._main
         r._instructions=self._instructions
         r._consts=self._consts
@@ -111,6 +113,8 @@ class SubsystemBase:
         return True
     def name(self):
         return self._name
+    def basename(self):
+        return self._basename
     def fix(self, _fixed=True):
         self._fixed = _fixed
     def resize(self, size:int):
@@ -126,6 +130,13 @@ class SubsystemBase:
         
         if not (name in self._consts):
             self._consts[name] = value
+
+        return True
+    def replace_const(self, name: str, value:int) -> bool:
+        if not (name in self._consts):
+            return False
+
+        self._consts[name] = value
 
         return True
     def has_enum(self, name: str) -> bool:

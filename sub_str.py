@@ -88,6 +88,15 @@ class Subsystem_Str(SubsystemBase):
         else:
             self._main.put(">" + "+" * n + "[<" + "+" * m + ">-]")
 
+    def put_clear_dsts(self, out_vars: list):
+        """clear destinations without sign."""
+
+        for out_var in out_vars:
+            sign, addr0 = separate_sign(out_var)
+            addr = self._main.addressof(addr0)
+
+            if sign == "":
+                self._main.put_with(addr, "[-]")
 
     def has_ins(self, name: str, args: list) -> bool:
         return (name in [
@@ -212,12 +221,7 @@ class Subsystem_Str(SubsystemBase):
 
                 return
 
-            for arg in args:
-                sign, addr0 = separate_sign(arg)
-                addr = self._main.addressof(addr0)
-
-                if sign == "":
-                    self._main.put_with(addr, "[-]")
+            self.put_clear_dsts(args)
 
             for arg in args:
                 sign, addr0 = separate_sign(arg)
@@ -236,12 +240,7 @@ class Subsystem_Str(SubsystemBase):
 
                 return
 
-            for arg in args:
-                sign, addr0 = separate_sign(arg)
-                addr = self._main.addressof(addr0)
-
-                if sign == "":
-                    self._main.put_with(addr, "[-]")
+            self.put_clear_dsts(args)
 
             for arg in args:
                 sign, addr0 = separate_sign(arg)
@@ -255,12 +254,7 @@ class Subsystem_Str(SubsystemBase):
             return
 
         if name == "@len":
-            for arg in args:
-                sign, addr0 = separate_sign(arg)
-                addr = self._main.addressof(addr0)
-
-                if sign == "":
-                    self._main.put_with(addr, "[-]")
+            self.put_clear_dsts(args)
 
             self._main.put_with(self.offset(), ">>[[>]<[>+<-]<[<]<+>>]>[[<+>-]>]<<[<]<[")
 

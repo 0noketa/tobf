@@ -228,22 +228,25 @@ class Subsystem_Memory(SubsystemBase):
             args = [args[0]] + [sign + x for x in args[1:]]
 
         if ins_name == "@set":
-            def put_value(value):
-                if sign == "" and value.isdigit():
-                    self._main.put("[-]")
+            if self._main.is_var(args[0]):
+                raise Exception("[mem:@set var ...out] is not implemented")
 
+            def put_value(value):
                 if value == "input":
                     self._main.put(",")
                 elif value == "print":
                     self._main.put(".")
                 else:
+                    if sign == "":
+                        self._main.put("[-]")
+
                     value = int(value)
                     if sign == "-":
                         self.dec(value)
                     else:
                         self.inc(value)
 
-            value = args[0]
+            value = self._main.valueof(args[0])
 
             for address in args[1:]:
                 sign, address = separate_sign(address)
@@ -276,6 +279,9 @@ class Subsystem_Memory(SubsystemBase):
             return
 
         if ins_name in ["@w_move", "@w_copy"]:
+            if not self._main.is_var(args[0]):
+                raise Exception(f"[mem:{ins_name} val ...out] is not implemented")
+
             addr = self._main.addressof(args[0])
 
             if ins_name == "@w_copy":

@@ -3,7 +3,7 @@
 # abi:
 #   pointer: always points address 0 with value 0 at the beggining and the end
 #   memory: temporary, ...vars, dynamic_memory
-#     area of vars has no hidden workspace expects address 0. can be used like common-vars in old fortran.
+#     area of vars has no hidden workspace except address 0. can be used like common-vars in old fortran.
 #     dynamic_memory is optional. nothing exists until initialized manually. and can be cleaned up.
 # linking(not yet):
 #   sequencial or macro-injection.
@@ -86,6 +86,8 @@ class Tobf(Mainsystem):
     def install_subsystem(self, subsystem: SubsystemBase):
         self._subsystems[subsystem.name()] = subsystem
 
+    # maybe broken. do not unload if subsystem is not placed at the last.
+    # and currently no subsystem can calculate its size without assigned baseaddress. 
     def offsetof_next_subsystem(self) -> int:
         if len(self._loaded_subsystems) == 0:
             return self._reserved if self._reserved != -1 else len(self._vars) + 1
@@ -196,6 +198,17 @@ class Tobf(Mainsystem):
             return sub.has_var(name)
         else:
             return self.has_var(value)
+
+    def is_sub(self, value, typ="") -> bool:
+        if not (value in self._loaded_subsystems.keys()):
+            return False
+
+        if typ == "":
+            return True
+
+        sub = self.subsystem_by_alias(value)
+
+        return sub.basename() == typ
 
     def addressof(self, value) -> int:
         if type(value) != str:
@@ -413,20 +426,34 @@ class Tobf(Mainsystem):
 
         # ducktype checker (maybe doesnt work well)
         if name == "is_var":
-            for arg in args[1:]:
-                try:
-                    self.addressof(arg)
-                except Exception as e:
+            for arg in args:
+                if not self.is_var(arg):
                     raise Exception(f"type check failed: {arg} should be variable")
 
             return True
 
         if name == "is_val":
-            for arg in args[1:]:
-                try:
-                    self.valueof(arg)
-                except Exception as e:
+            for arg in args:
+                if self.is_var(arg) or self.is_sub(arg):
                     raise Exception(f"type check failed: {arg} should be value")
+
+            return True
+
+        if name == "is_sub":
+            for arg in args:
+                if not self.is_sub(arg):
+                    raise Exception(f"type check failed: {arg} should be subsystem")
+
+            return True
+
+        if name == "is":
+            if len(args) == 0:
+                raise Exception("is/0 is not implemented")
+
+            typ = args[0]
+            for arg in args[1:]:
+                if not self.is_sub(arg, typ):
+                    raise Exception(f"type check failed: {arg} should be subsystem {typ}")
 
             return True
 
