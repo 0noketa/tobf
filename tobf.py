@@ -13,6 +13,10 @@
 #   var_decl: id (" " val)*
 #   instructions: (id (" " val)* "\n")*
 # instructions:
+# bool io_var ...out_vars
+#   if io_var is not 0, io_var becomes to 1. and copies io_var to out_vars.
+# bool_not io_var ...out_vars
+#   if io_var is not 0, io_var becomes to 0. or else to 1. besides copies io_var to out_vars.
 # set imm ...out_vars_with_sign
 #   every destination can starts with "+" or "-", they means add or sub instead of set 
 #   aliases_with_inplicit_signs:
@@ -475,6 +479,45 @@ class Tobf(Mainsystem):
 
         if name == "unload":
             self.put_unload(args[0], args[1:])
+
+            return True
+
+        if name == "bool":
+            self.clear_vars(args[1:])
+
+            self.load_it(args[0])
+            self.put("[")
+
+            for arg in args:
+                sign, addr = separate_sign(arg)
+                addr = self.addressof(addr)
+
+                self.put_with(addr, "-" if sign == "-" else "+")
+
+            self.put("[-]]")
+
+            return True
+
+        if name == "bool_not":
+            self.load_it(args[0])
+
+            self.clear_vars(args[1:])
+
+            for arg in args:
+                sign, addr = separate_sign(arg)
+                addr = self.addressof(addr)
+
+                self.put_with(addr, "-" if sign == "-" else "+")
+
+            self.put("[")
+
+            for arg in args:
+                sign, addr = separate_sign(arg)
+                addr = self.addressof(addr)
+
+                self.put_with(addr, "+" if sign == "-" else "-")
+
+            self.put("[-]]")
 
             return True
 

@@ -11,8 +11,6 @@ a x b y c z e n m
 
 # arg: var
 :writeint arg
-    clear n
-    clear a
     add 3 x
     while x
         clear b
@@ -49,20 +47,25 @@ a x b y c z e n m
         dec x
     endwhile x
 
-    add 48 e
+    add 48 z
 
-    if a
-        copyadd e a
+    ifelse a e
+        copyadd z a
         print a
-    endif a
 
-    if b
-        copyadd e b
+        copyadd z b
         print b
-    endif b
+    else a e
+        if b
+            copyadd z b
+            print b
+        endif b
+    endifelse a e
 
-    moveadd e c
+    moveadd z c
     print c
+
+    clear n b c z
 
 end
 

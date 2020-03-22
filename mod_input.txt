@@ -32,5 +32,7 @@ w i e new
         endifelse i -e
     endwhile w
 
+:readln result
+    readint_until 10 result
 
 end
