@@ -45,7 +45,7 @@
 #   loads and names as alias_name
 # unload subsysten_name
 #   unloads a subsystem. subsystem_name can be alias_name
-# subsystem_name.any_name ...args
+# subsystem_name:any_name ...args
 #   invokes a feature of subsystem
 # if cond_var
 #   cond_var is avarable until endif
@@ -78,7 +78,7 @@ class Tobf(Mainsystem):
 
     def reserve(self, size):
         """manually selects size of variable area\n
-        can be reselected when on subsystem was loaded."""
+        can be reselected when no subsystem was loaded."""
 
         if len(self._loaded_subsystems.keys()) > 0:
             return False

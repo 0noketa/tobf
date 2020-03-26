@@ -123,4 +123,46 @@ current_label next_label return_label continue n m
     dec callstack:sp
     callstack_stack:@r_move callstack:sp next_label
 
+:@call_if_set _x _n
+    @check_callstack
+    is_var _x
+    is_val _n
+
+    callstack_labels:inc current
+    if _x
+        set _n next_label
+        callstack_stack:@set callstack_labels:current callstack:sp
+        inc callstack:sp
+    endif _x
+    @at callstack_labels:current
+:@call_if_move _x _n
+    @check_callstack
+    is_var _x _n
+
+    callstack_labels:inc current
+    if _x
+        move _n next_label
+        callstack_stack:@set callstack_labels:current callstack:sp
+        inc callstack:sp
+    endif _x
+    @at callstack_labels:current
+:@call_if_copy _x _n
+    @check_callstack
+    is_var _x _n
+
+    callstack_labels:inc current
+    if _x
+        copy _n next_label
+        callstack_stack:@set callstack_labels:current callstack:sp
+        inc callstack:sp
+    endif _x
+    @at callstack_labels:current
+:@return_if _x
+    @check_callstack
+    is_var _x
+
+    if _x
+        dec callstack:sp
+        callstack_stack:@r_move callstack:sp next_label
+    endif _x
 end

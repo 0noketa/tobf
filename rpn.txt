@@ -1,0 +1,24 @@
+it it2 c d sp
+
+load code rpn_sub
+
+loadas b code mod_jump
+b:@load_callstack 1
+loadas sub consts
+
+# swap them if use large stack
+loadas stack mem 8
+loadas out code mod_print
+
+sub:def 100 read
+sub:def 110 add
+sub:def 120 sub
+sub:def 130 println
+sub:def 140 ln
+
+
+code:main
+
+end
+
+

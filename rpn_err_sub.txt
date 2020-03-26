@@ -1,0 +1,162 @@
+
+# compiler is something broken
+# some small change can make strange behavior
+# this version does not work
+
+# rpn calc
+# words:
+#   values: single_digit
+#   operators: + - P
+# example:
+#   12+ 3+ 4+ P
+
+:init
+    is_var it it2 c d sp
+
+:auto_label
+    cst:inc current
+    b:@at cst:current
+
+:je c _c _lbl
+    is_var c
+    is_val _c _lbl
+
+    sub _c c
+    bool_not c
+    b:@goto_if c  set _lbl
+
+    auto_label
+:jz c _lbl
+    is_var c
+    is_val _lbl
+
+    bool_not c
+    b:@goto_if c  set _lbl
+
+    auto_label
+:jnz c _lbl
+    is_var c
+    is_val _lbl
+
+    b:@goto_if c  set _lbl
+
+    auto_label
+:do
+    cst:redef 0 current
+    b:@begin 0
+:label _n
+    cst:redef _n current
+    b:@at _n
+# when goto in block or label is next to goto
+:vgoto _n
+    b:@goto set _n
+:goto _n
+    b:@goto set _n
+
+    auto_label
+:call _n
+    cst:inc current
+    b:@flat_call set _n  cst:current
+    b:@at cst:current
+:push _v
+    is_var _v
+    stack:@w_move _v sp
+    inc sp
+:pop _v
+    is_var _v
+    dec sp
+    stack:@r_move sp _v
+:ret
+    b:@flat_return
+:od
+    b:@end 255
+
+:main
+    do
+        call sub:read
+
+        ifelse c d
+            vgoto 0
+        else c d
+            vgoto 255
+        endifelse c d
+
+    label sub:read
+        clear it
+        input c
+        copy c d
+
+        # spaces
+
+        # 0
+        copy d it
+        jz it  255
+
+        # 255
+        copy d it
+        dec it
+        jz it  255
+
+        sub 9 d
+        copy d it
+        jz it  sub:read
+
+        # 10
+        dec d
+        copy d it
+        jz it  255
+
+        # 32
+        sub 22 d
+        copy d it
+        jz it  sub:read
+
+        # commands
+
+        # 43
+        sub 11 d
+        copy d it
+        jz it  sub:add
+
+        # 45
+        sub 2 d
+        copy d it
+        jz it  sub:sub
+
+        # will be used if c is digit
+        copy d it
+        sub 3 it
+
+        # 80
+        sub 35 d
+        jz d  sub:println
+
+        # num
+        push it
+        ret
+    label sub:add
+        pop it
+        pop it2
+        moveadd it2 it
+        push it
+        ret
+    label sub:sub
+        pop it2
+        pop it
+        movesub it2 it
+        push it
+        ret
+    label sub:println
+        pop it
+        out:writeint it
+    label sub:ln
+        set 10 it
+        print it
+        clear it
+        ret
+    od
+
+
+end
+
+

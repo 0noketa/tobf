@@ -29,4 +29,4 @@ if __name__ == "__main__":
 
     w = 80
     for i in range(0, len(src), w):
-        print(src[i:i+80])
+        print(src[i:i+w])
