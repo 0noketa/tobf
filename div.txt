@@ -1,0 +1,28 @@
+x y i j c_space c_div c_eq tmp
+
+loadas out code mod_print
+loadas u code mod_util
+loadas u2 code mod_util
+loadas u3 code mod_util
+
+set 32 c_space
+copyadd c_space  c_div c_eq c_eq
+add 15 c_div
+sub 3 c_eq
+
+u:@for_const x 1 8 1
+    u2:@for_const y 1 8 1
+        u3:@divmod x y i j
+
+        out:writeint x
+        print c_div
+        out:writeint y
+        print c_eq
+        out:writeint i
+        print c_space
+        out:writelnint j
+    u2:@endfor_const y 1 8 1
+    input tmp
+u:@endfor_const x 1 8 1
+
+end

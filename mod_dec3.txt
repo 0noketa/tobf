@@ -153,6 +153,17 @@ n m e z
 :@copysub x y
     _movesub_dec add dec _copysub  x y
 
+# breaks x
+:@movemul x y z
+    @check x
+    @check y
+    @check z
+
+    @while x
+        @copyadd y z
+        @dec x
+    @endwhile x
+
 :_copyifelse x n e
     _copyadd x n
     ifelse n e

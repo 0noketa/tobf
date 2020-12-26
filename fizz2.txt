@@ -1,14 +1,10 @@
-j  f b n t e cf ci cz cb cu cln
+ f b n t e cf ci cz cb cu cln
 
 # i: current number
 # j: rest of numbers
-
-# contains it
-resb 2
-loadas in code mod_input
-    in:readint_until 10 j
-unload in
-resb 13
+loadas i vars a b c d e f
+loadas j vars a b c d e f
+loadas dec code mod_dec6
 
 add 70 cf ci cb cz cu
 add 3 ci
@@ -21,11 +17,10 @@ add 10 cln
 # b: 1 to 5 (includes 5)
 set 1 f b
 
-loadas i vars a b c
-loadas dec code mod_dec3
+dec:@readln j
 dec:@inc i
 
-while j
+dec:@while j
     # is not fizz nor buzz
     set 1 n
 
@@ -52,9 +47,9 @@ while j
     print cln
 
     inc b f
-    dec:@inc i
 
-    dec j
-endwhile j
+    dec:@inc i
+    dec:@dec j
+dec:@endwhile j
 
 end

@@ -1,0 +1,235 @@
+x y z x2 y2 z2 e e2
+
+# block macros are not nestable
+
+:init
+:clean
+    clear x y z x2 y2 z2 e
+
+# requires sub code.mod_print as out; var char_space=32, tmp
+# i is charcode
+:_debug i
+    is_val i
+    set i tmp
+    print tmp
+    print char_space char_space
+    out:writeint x
+    print char_space
+    out:writeint y
+    print char_space
+    out:writeint x2
+    print char_space
+    out:writeint y2
+    print char_space
+    out:writeint e
+    print char_space
+    out:writelnint e2
+    input tmp
+    clear tmp
+:debug i
+    # _debug i
+
+:@doif x  f a
+    if x
+        f a
+    endif x
+:@doif2 x  f a b
+    if x
+        f a b
+    endif x
+:@doif3 x  f a b c
+    if x
+        f a b c
+    endif x
+
+# uses x2 y2 e
+# breaks x0 y0
+# result: (x > 0 if x > y), y = 0
+:_@gt_head x0 y0
+    is_var x0 y0
+    while y0
+        copy x0 x2
+        ifelse x2 e
+            dec x0 y0
+        else x2 e
+            clear y0
+        endifelse x2 e
+    endwhile y0
+
+# uses x2 y2 e
+# breaks x0 y0
+:@gt x0 y0 r
+    _@gt_head x0 y0
+    clear r
+    @doif x0  inc r
+
+# uses x y x2 y2 e
+:@gt_copy x0 y0 r
+    copy x0 x
+    copy y0 y
+    @gt x y r
+
+# uses x2 y2 e
+# breaks x0 y0
+:@ifgt x0 y0
+    _@gt_head x0 y0
+    if x0
+:@endifgt x0 y0
+    endif x0
+
+# uses x y x2 y2 e
+:@ifgt_copy x0 y0
+    copy x0 x
+    copy y0 y
+    @ifgt x y
+:@endifgt_copy x0 y0
+    endif x
+
+# uses x2 y2 e
+# breaks x0 y0
+:@ifelsegt x0 y0 e
+    _@gt_head x0 y0
+    ifelse x0 e
+:@elsegt x0 y0 e
+    else x0 e
+:@endifelsegt x0 y0 e
+    endifelse x0 e
+
+# uses x y x2 y2 e
+# breaks e
+:@ifelsegt_copy x0 y0 e
+    copy x0 x
+    copy y0 y
+    @ifelsegt x y e
+:@elsegt_copy x0 y0 e
+    else x e
+:@endifelsegt_copy x y e
+    endifelse x e
+
+# uses x2 y2 e
+# breaks x0 y0
+:@doifgt x0 y0  f a
+    _@gt_head x0 y0
+    @doif x0  f a
+:@doifgt2 x0 y0  f a b
+    _@gt_head x0 y0
+    @doif x0  f a b
+:@doifgt3 x0 y0  f a b c
+    _@gt_head x0 y0
+    @doif x0  f a b c
+
+# uses x y x2 y2 e
+:@doifgt_copy x0 y0  f a
+    copy x0 x
+    copy y0 y
+    _@gt_head x y
+    @doif x  f a
+:@doifgt2 x0 y0  f a b
+    copy x0 x
+    copy y0 y
+    _@gt_head x y
+    @doif x  f a b
+:@doifgt3 x0 y0  f a b c
+    copy x0 x
+    copy y0 y
+    _@gt_head x y
+    @doif x  f a b c
+
+# uses x y x2 y2
+# breaks nothing; @endwhilegt breaks x0 y0
+:@whilegt x0 y0
+    copy x0 x
+    copy y0 y
+    _@gt_head x y
+    while x
+:@endwhilegt_noclear x0 y0
+    copy x0 x
+    copy y0 y
+    _@gt_head x y
+    endwhile x
+:@endwhilegt x y
+    @endwhilegt_noclear x y
+    clear x y
+
+# uses x y x2 y2 e
+# breaks x0 y0
+:@for i x0 y0 n
+    is_var i x0 y0 n
+    copy x0 i
+    @whilegt y0 i
+:@endfor i x0 y0 n
+    is_var i x0 y0
+        copyadd n i
+    @endwhilegt y0 i
+
+# uses x y z x2 y2 e
+:@for_const i x0 y0 n
+    is_var i
+    is_val x0 y0 n
+    set x0 i
+    set y0 z
+    @whilegt z i
+:@endfor_const i x0 y0 n
+    is_var i
+    is_val x0 y0
+        add n i
+    @endwhilegt z i
+
+# macros as inc for @for
+:_@step n x
+    is_var x
+    add n x
+:@step_1 x
+    _@step 1 x
+:@step_2 x
+    _@step 2 x
+:@step_3 x
+    _@step 3 x
+:@step_4 x
+    _@step 4 x
+:@step_5 x
+    _@step 5 x
+:@step_6 x
+    _@step 6 x
+:@step_7 x
+    _@step 7 x
+:@step_8 x
+    _@step 8 x
+:@step_9 x
+    _@step 9 x
+:@step_10 x
+    _@step 10 x
+
+
+# uses x y z x2 y2 e e2
+:@divmod dividend divisor result rest 
+    clear result
+    copy dividend rest
+
+    copy divisor y
+    ifelse y e2
+        inc z
+        while z
+            copy divisor x
+            copy rest y
+            @ifelsegt x y e2
+                clear z
+            @elsegt x y e2
+                copysub divisor rest
+                inc result
+            @endifelsegt x y e2
+        endwhile z
+    else y e2
+        clear result rest
+    endifelse y e2
+
+# uses x y z x2 y2 z2 e e2
+:@div dividend divisor result
+    @divmod dividend divisor result z2
+    clear z2
+:@mod dividend divisor rest
+    @divmod dividend divisor z2 rest
+    clear z2
+
+
+end

@@ -9,8 +9,8 @@ a x b y c z e n m
     moveadd x e
     move e +x -y
 
-# arg: var
 :writeint arg
+    is_var arg
     add 3 x
     while x
         clear b
@@ -66,6 +66,16 @@ a x b y c z e n m
     print c
 
     clear n b c z
+
+:newline
+    set 10 a
+    print a
+    clear a
+
+:writelnint arg
+    writeint arg
+    newline
+
 
 end
 
