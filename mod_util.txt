@@ -153,52 +153,27 @@ x y z x2 y2 z2 e e2
 
 # uses x y x2 y2 e
 # breaks x0 y0
-:@for i x0 y0 n
-    is_var i x0 y0 n
+:@for i x0 y0  add n
+    is_var i x0 y0
     copy x0 i
     @whilegt y0 i
-:@endfor i x0 y0 n
+:@endfor i x0 y0  add n
     is_var i x0 y0
-        copyadd n i
+        add n i
     @endwhilegt y0 i
 
 # uses x y z x2 y2 e
-:@for_const i x0 y0 n
+:@for_const i x0 y0  add n
     is_var i
-    is_val x0 y0 n
+    is_val x0 y0
     set x0 i
     set y0 z
     @whilegt z i
-:@endfor_const i x0 y0 n
+:@endfor_const i x0 y0  add n
     is_var i
     is_val x0 y0
         add n i
     @endwhilegt z i
-
-# macros as inc for @for
-:_@step n x
-    is_var x
-    add n x
-:@step_1 x
-    _@step 1 x
-:@step_2 x
-    _@step 2 x
-:@step_3 x
-    _@step 3 x
-:@step_4 x
-    _@step 4 x
-:@step_5 x
-    _@step 5 x
-:@step_6 x
-    _@step 6 x
-:@step_7 x
-    _@step 7 x
-:@step_8 x
-    _@step 8 x
-:@step_9 x
-    _@step 9 x
-:@step_10 x
-    _@step 10 x
 
 
 # uses x y z x2 y2 e e2
@@ -232,4 +207,63 @@ x y z x2 y2 z2 e e2
     clear z2
 
 
+# not tested
+# uses x x2 z z2
+:@switch x0
+    is_var x0
+
+    copy x0 x2
+
+    set 1 z
+    clear z2
+
+    ifelse z e
+        inc z2
+    else z e
+:_@case sub n
+    endifelse z e
+
+    if z2
+        copy x2 x
+        sub n x
+        @doif x  inc z
+    endif z2
+    
+    ifelse z e
+        inc z2
+    else z e
+:@case n
+    is_var n
+    _@case copysub n
+:@case_const n
+    is_val n
+    _@case sub n
+:@case_default
+    endifelse z e
+
+    inc z
+    @doif z2  dec z
+    
+    ifelse z e
+        inc z2
+    else z e
+:@endswitch x0
+    is_var n
+
+    endifelse z e
+
+    clear x2 z2
+
+# breaks x y
+:@and x y z
+    clear z
+    if x
+        @doif y  inc z
+    endif x
+    clear y
+:@or x y z
+    set 1 z
+    @doif x  dec z
+    @doif y  clear z
+    
 end

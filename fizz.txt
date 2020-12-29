@@ -26,16 +26,14 @@ while j
     # is not fizz nor buzz
     set 1 n
 
-    copy f t
-    sub 3 t
+    ! copy f | sub 3 <- t
     ifelse t +e
     else t -e
         print cf ci cz cz
         clear n f
     endifelse t -e
 
-    copy b t
-    sub 5 t
+    ! copy b | sub 5 <- t
     ifelse t +e
     else t -e
         print cb cu cz cz

@@ -2,8 +2,7 @@
 
 # i: current number
 # j: rest of numbers
-loadas i vars a b c d e f
-loadas j vars a b c d e f
+! loadas i | loadas j <- vars a b c d e f
 loadas dec code mod_dec6
 
 add 70 cf ci cb cz cu
@@ -24,16 +23,14 @@ dec:@while j
     # is not fizz nor buzz
     set 1 n
 
-    copy f t
-    sub 3 t
+    ! copy f | sub 3 <- t
     ifelse t +e
     else t -e
         print cf ci cz cz
         clear n f
     endifelse t -e
 
-    copy b t
-    sub 5 t
+    ! copy b | sub 5 <- t
     ifelse t +e
     else t -e
         print cb cu cz cz

@@ -1,5 +1,5 @@
 
-# a to-bf compiler for small outouts
+# a to-bf compiler for small programs
 # abi:
 #   pointer: always points address 0 with value 0 at the beggining and the end
 #   memory: temporary, ...vars, dynamic_memory
@@ -15,6 +15,7 @@
 # instructions:
 # bool io_var ...out_vars
 #   if io_var is not 0, io_var becomes to 1. and copies io_var to out_vars.
+# not io_var ...out_vars
 # bool_not io_var ...out_vars
 #   if io_var is not 0, io_var becomes to 0. or else to 1. besides copies io_var to out_vars.
 # set imm ...out_vars_with_sign
@@ -28,9 +29,24 @@
 #       imm as 1 and sign as "+"
 #     dec ...out_vars
 #       imm as 1 and sign as "-"
+# set_char imm_char ...out_vars_with_sign
+# add_char imm_char ...out_vars
+# sub_char imm_char ...out_vars
+#   uses char literal instead of charcode digits
+# eq imm ...out_vars
+# eq_char imm_char ...out_vars
+#   replaces out_vars with result of comparision with imm
+# moveeq in_var ...out_vars
+# copyeq in_var ...out_vars
+#   similer to eq
+# and in_var out_var
+# nand in_var out_var
+# or in_var ...out_vars
+# nor in_var ...out_vars
+#   similer to eq. breaks in_var 
 # move in_var ...out_vars_with_sign
 #   in_var becomes to 0
-#   aliases_with_inplicit_signs:
+#   aliases_with_implicit_signs:
 #     moveadd in_var ...out_vars 
 #     movesub in_var ...out_vars 
 # copy in_var ...out_vars_with_sign
@@ -59,11 +75,14 @@
 # endifelse cond_var work_var
 # while cond_var
 # endwhile cond_var
+# every ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
+# ! ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
+#   invoke every instruction with args + sub_args
 # end
 #   can not be omitted
 
 import io
-from base import Mainsystem, SubsystemBase, InstructionBase, split, separate_sign, calc_small_pair, MacroProc
+from base import Mainsystem, SubsystemBase, InstructionBase, split, split_list, separate_sign, calc_small_pair, MacroProc
 
 
 class Tobf(Mainsystem):
@@ -187,6 +206,15 @@ class Tobf(Mainsystem):
     def put_with(self, addr:int, s:str):
         self.with_addr(addr, s)        
 
+    def put_with_every(self, addrs:list, s:str):
+        used = []
+        for addr in addrs:
+            if addr in used:
+                continue
+
+            used.append(addr)
+            self.with_addr(addr, s)   
+
     def has_var(self, name:str) -> bool:
         return name in self._vars
     def addressof_var(self, name:str) -> int:
@@ -217,6 +245,9 @@ class Tobf(Mainsystem):
     def addressof(self, value) -> int:
         if type(value) != str:
             return value
+        elif self.is_signed(value):
+            sign, value2 = separate_sign(value)
+            return self.addressof(value2)
         elif ":" in value:
             sub_name, name = split(value, sep=":", maxsplit=1)
             sub = self.subsystem_by_alias(sub_name)
@@ -241,6 +272,10 @@ class Tobf(Mainsystem):
             return int(value)
         else:
             return value
+
+    def variablesof(self, name: str) -> list:
+        if self.is_sub(name):
+            return self.subsystem_by_alias(name)._vars.copy()
 
     def begin(self, i):
         self.put(">" * int(i + 1))
@@ -275,7 +310,9 @@ class Tobf(Mainsystem):
     def clear(self, v):
         self.clear_vars([v], True)
 
-    def clear_vars(self, out_vars:list, force=False):
+    def clear_vars(self, out_vars:list, force=False, without=[]):
+        cleared = [self.addressof(i) for i in without]
+
         for out_var in out_vars:
             sign, out_var = separate_sign(out_var)
 
@@ -283,6 +320,12 @@ class Tobf(Mainsystem):
                     continue
 
             addr = self.addressof(out_var)
+
+            if addr in cleared:
+                continue
+
+            cleared.append(addr)
+
             self.with_addr(addr, "[-]")
 
 
@@ -357,7 +400,7 @@ class Tobf(Mainsystem):
             else:
                 self.inc(value)
 
-    def put_set(self, value, args: list):
+    def put_set(self, value, args: list, addressof_tmp=0):
         n = 1
         m = self.valueof(value)
 
@@ -374,8 +417,8 @@ class Tobf(Mainsystem):
 
 
         if n > 1:
-            self.inc(n)
-            self.put("[")
+            self.put_with(addressof_tmp, "+" * n)
+            self.put_with(addressof_tmp, "[")
             self.uplevel()
 
         for name in args:
@@ -388,7 +431,7 @@ class Tobf(Mainsystem):
 
         if n > 1:
             self.downlevel()
-            self.put("-]")
+            self.put_with(addressof_tmp, "-]")
 
     def put_invoke(self, name:str, args:list):
         if ":" in name:
@@ -418,6 +461,18 @@ class Tobf(Mainsystem):
             sign = "+" if name == "add" else "-"
             name = "set"
             args = [args[0]] + [sign + x for x in args[1:]]
+        if name == "set_char":
+            sign = ""
+            name = "set"
+            args = [str(ord(args[0]))] + [sign + x for x in args[1:]]
+        if name == "eq_char":
+            sign = ""
+            name = "eq"
+            args = [str(ord(args[0]))] + [sign + x for x in args[1:]]
+        if name in ["add_char", "sub_char"]:
+            sign = "+" if name == "add_char" else "-"
+            name = "set"
+            args = [str(ord(args[0]))] + [sign + x for x in args[1:]]
         if name in ["copyadd", "copysub"]:
             sign = "+" if name == "copyadd" else "-"
             name = "copy"
@@ -482,42 +537,179 @@ class Tobf(Mainsystem):
 
             return True
 
+        if name == "swap":
+            self.load_it(args[0])
+
+            addr0 = self.addressof(args[0])
+            addr1 = self.addressof(args[1])
+
+            self.put_with(addr1, "[")
+            self.put_with(addr0, "+")
+            self.put_with(addr1, "-]")
+
+            self.put("[")
+            self.put_with(addr1, "+")
+            self.put("-]")
+
+            return True
+
         if name == "bool":
             self.clear_vars(args[1:])
 
             self.load_it(args[0])
             self.put("[")
 
-            for arg in args:
-                sign, addr = separate_sign(arg)
-                addr = self.addressof(addr)
-
-                self.put_with(addr, "-" if sign == "-" else "+")
+            self.put_with_every([self.addressof(arg) for arg in args], "+")
 
             self.put("[-]]")
 
             return True
 
-        if name == "bool_not":
-            self.load_it(args[0])
+        if name in ["bool_not", "not"]:
+            addr = self.addressof(args[0])
 
-            self.clear_vars(args[1:])
+            self.put("+")
+            self.put_with(addr, "[")
+            self.put_with(0, "-")
+            self.put_with(addr, "[-]]")
 
-            for arg in args:
-                sign, addr = separate_sign(arg)
-                addr = self.addressof(addr)
-
-                self.put_with(addr, "-" if sign == "-" else "+")
+            self.clear_vars(args, without=[args[0]])
 
             self.put("[")
+            self.put_with_every([self.addressof(arg) for arg in args], "+")
+            self.put("-]")
 
-            for arg in args:
-                sign, addr = separate_sign(arg)
-                addr = self.addressof(addr)
+            return True
 
-                self.put_with(addr, "+" if sign == "-" else "-")
+        if name == "eq":
+            v = self.valueof(args[0])
 
-            self.put("[-]]")
+            for arg in args[1:]:
+                addr = self.addressof(arg)
+
+                # it = arg - imm
+                self.load_it(arg)
+                self.put_set(v, ["-0"], addressof_tmp=addr)
+                
+                self.put_with(addr, "+")
+                self.put("[")
+                self.put_with(addr, "-")
+                self.put("[-]]")
+
+            return True
+
+        if name in ["moveeq", "copyeq"]:
+            addr0 = self.addressof(args[0])
+
+            for arg in args[1:]:
+                addr = self.addressof(arg)
+
+                self.put_with(addr, "[")
+                self.put("+")
+                self.put_with(addr, "-]")
+
+                self.put_with(addr0, "[")
+                self.put_with(0, "-")
+                if name == "copyeq" or len(args) > 2:
+                    self.put_with(addr, "+")
+                self.put_with(addr0, "-]")
+                
+                if name == "copyeq" or len(args) > 2:
+                    self.put_with(addr, "[")
+                    self.put_with(addr0, "+")
+                    self.put_with(addr, "-]")
+
+                self.put_with(addr, "+")
+
+                self.put("[")
+                self.put_with(addr, "-")
+                self.put("[-]]")
+
+            if name == "moveeq" or len(args) > 2:
+                self.clear(addr0)
+
+            return True
+
+        if name in ["or", "nor"]:
+            if len(args) < 2:
+                raise Exception(f"[{name}/{len(args)}] is not implemented")
+
+            addr0 = self.addressof(args[0])
+
+            for arg in args[1:]:
+                addr = self.addressof(arg)
+
+                # move v?  it
+                # move v0  +it v?
+                # move v?  v0
+                # if it  inc v?
+
+                self.put_with(addr, "[")
+                self.put("+")
+                self.put_with(addr, "[-]]")
+
+                self.put_with(addr0, "[")
+                self.put("+")
+                self.put_with(addr, "+")
+                self.put_with(addr0, "[-]]")
+
+                self.put_with(addr, "[")
+                self.put_with(addr0, "+")
+                self.put_with(addr, "-]")
+
+                if name == "nor":
+                    self.put_with(addr, "+")
+
+                    self.put("[")
+                    self.put_with(addr, "-")
+                    self.put("-]")
+                else:
+                    self.put("[")
+                    self.put_with(addr, "+")
+                    self.put("-]")
+    
+            self.put_with(addr0, "-")
+
+            return True
+
+        if name in ["and", "nand"]:
+            if len(args) != 2:
+                raise Exception(f"[{name}/{len(args)}] is not implemented")
+
+            addr0 = self.addressof(args[0])
+
+            for arg in args[1:]:
+                addr = self.addressof(arg)
+
+                # breaks args[0]
+
+                self.put_with(addr, "[")
+                self.put("+")
+                self.put_with(addr, "[-]]")
+
+                if name == "nand":
+                    self.put_with(addr, "+")
+
+                self.put("[")
+                self.put_with(addr0, "[")
+                self.put_with(addr, "+" if name == "and" else "-")
+                self.put_with(addr0, "[-]]")
+                self.put("-]")
+    
+            return True
+
+        if name in ["every", "!"]:
+            if not ("<-" in args):
+                raise Exception(f"[every] requires <-")
+
+            inss = split_list(args[:args.index("<-")], "|")
+            argss = split_list(args[args.index("<-") + 1:], "|")
+
+            for args2 in argss:
+                for ins in inss:
+                    ins2, *prefix = ins
+
+                    self.put_invoke(ins2, prefix + args2)
 
             return True
 
@@ -659,10 +851,10 @@ class Tobf(Mainsystem):
     
     def compile_all(self, src:list, comments=False):
         for i in src:
-            if comments:
+            if comments or i[0] == "bf":
                 print(" ".join(i) if type(i) == list else i)
 
-                if i[0] == "bf":
+                if not comments:
                     continue
 
             self.compile_instruction(i)

@@ -1,9 +1,9 @@
 
 # subsystem mem
 # init imm
-#   initialize imm bytes of dynamic memory. only once works. imm <= 256.
+#   initialize imm bytes of random-access memory. only once works. imm <= 256.
 # clean imm
-#   works only after init. clean dynamic memory area.
+#   works only after init. clean random-access memory area.
 #   init and resb can be used after clean again.
 # clean imm fast
 #   fast and short version.
@@ -11,7 +11,7 @@
 #   works when every values stored in memory was 0.
 #   on highly optimized bf implementations, this version will not be fast. just short.
 # @set imm_value ...addresses
-#   set constant or use command to dynamic memory 
+#   set constant or use command to random-access memory 
 #   imm_value:
 #     any digits
 #       set constant
@@ -27,14 +27,14 @@
 #     var_name
 #       uses pointer variable
 # @w_move in_var ...addresses
-#   set value from variable to dynamic memory. currently addresses accept only variable.
+#   set value from variable to random-access memory. currently addresses accept only variable.
 # @w_moveadd in_var ...addresses
 # @w_movesub in_var ...addresses
 # @w_copy in_var ...addresses
 # @w_copyadd in_var ...addresses
 # @w_copysub in_var ...addresses
 # @r_move in_var ...addresses
-#   move value from  dynamic memory to variable. address is the same as @w_move.
+#   move value from  random-access memory to variable. address is the same as @w_move.
 # @r_moveadd address ...out_vars
 # @r_movesub address ...out_vars
 # @r_copy address ...out_vars
@@ -45,7 +45,7 @@ from base import separate_sign, Mainsystem, SubsystemBase
 
 
 class Subsystem_Memory(SubsystemBase):
-    """dynamic memory area"""
+    """random-access memory area"""
 
     def addressof(self, addr):
         return self._main.addressof(addr) if type(addr) == str else addr

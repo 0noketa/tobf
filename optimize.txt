@@ -1,0 +1,80 @@
+b b2 b3 b4 c c2 c3 e
+
+# peep-hole optimizer
+
+loadas src str 64
+loadas src2 str 64
+
+inc b
+while b
+    input c
+
+    ! copy c | not <- b2
+    ! swap b3 | copy c | eq 255 | or b3 <- b2
+    ifelse b2 e
+        dec b
+    else b2 e
+        ! copy c | eq_char + <- b2
+        ! swap b3 | copy c | eq_char - | or b3 <- b2
+        ! swap b3 | copy c | eq_char > | or b3 <- b2
+        ! swap b3 | copy c | eq_char < | or b3 <- b2
+        ! swap b3 | copy c | eq_char [ | or b3 <- b2
+        ! swap b3 | copy c | eq_char ] | or b3 <- b2
+        ! swap b3 | copy c | eq_char , | or b3 <- b2
+        ! swap b3 | copy c | eq_char . | or b3 <- b2
+        if b2
+            src2:@push c
+        endif b2
+    endifelse b2 e
+endwhile b
+
+# reverse
+! src2:@len | while <- b
+    ! src2:@pop | src:@push <- c
+! src2:@len | endwhile <- b
+
+# optimize
+! src:@len | while <- b
+    ! src:@pop | src2:@copypush <- c
+
+    src:@len b2
+    if b2
+        ! src:@pop | src:@copypush <- c2
+
+        ! copy c | eq_char + <- b2
+        ! swap b3 | copy c2 | eq_char - | and b3 <- b2
+
+        ! copy c | eq_char - <- b3
+        ! swap b4 | copy c2 | eq_char + | and b4 <- b3
+        or b3 b2
+
+        ! copy c | eq_char > <- b3
+        ! swap b4 | copy c2 | eq_char < | and b4 <- b3
+        or b3 b2
+
+        ! copy c | eq_char < <- b3
+        ! swap b4 | copy c2 | eq_char > | and b4 <- b3
+        or b3 b2
+
+        if b2
+            ! src:@pop | src2:@pop <- c
+
+            # rewind
+            ! src2:@len | while <- b2
+                ! src2:@pop | src:@push <- c
+            ! src2:@len | endwhile <- b2
+        endif b2
+    endif b2
+! src:@len | endwhile <- b
+
+# reverse
+! src2:@len | while <- b
+    ! src2:@pop | src:@push <- c
+! src2:@len | endwhile <- b
+
+# dump
+! src:@len | while <- b
+    ! src:@pop | print <- c
+! src:@len | endwhile <- b
+
+end

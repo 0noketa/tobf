@@ -1,0 +1,32 @@
+
+# size. excludes bos, eos, and workspace
+loadas s str 13
+
+# assign literal
+# every sequence of space will be replaced with single space
+s:@set Hello, world!
+
+s:@writeln
+
+end
+
+
+# str has not any instruction for random-access
+loadas s str 13
+
+# assign literal
+s:@set Hello,
+
+# append chars
+s:@push 32
+
+# append literal
+s:@+set world!
+
+# with this option, output will be reversed
+s:@writeln reversed
+
+
+unload s
+
+end

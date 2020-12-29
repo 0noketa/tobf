@@ -27,11 +27,31 @@
 #   size: n
 #   vars:init n
 #     staticaly allocates n bytes
+#   vars:clean
+#     clears n bytes
+#   vars:clean fast
+#     does not clear
 #   vars:def ...names
-#     defines names memory addresses. they works as variable.
+#     defines names bound to memory addresses. they works as variable.
+#   vars:set ...imms ...varss
+#     imms: should have same number of values as variables.
+#     varss: list of vars
+#     set all immediates to variables.
+#     set to every same named variable in varss if varss exists.
+#   vars:add ...imms ...varss
+#   vars:sub ...imms ...varss
+#     similer to vars:set.
+#   vars:move ...varss
+#   vars:moveadd ...varss
+#   vars:movesub ...varss
+#   vars:copy ...varss
+#   vars:copyadd ...varss
+#   vars:copysub ...varss
+#     similer to main instruction. "this" as source.
+
 
 import io
-from base import src_extension, separate_sign, Mainsystem, SubsystemBase, InstructionBase, MacroProc
+from base import calc_small_pair, src_extension, separate_sign, Mainsystem, SubsystemBase, InstructionBase, MacroProc
 
 
 class Instruction_DefineConst(InstructionBase):
@@ -136,7 +156,17 @@ class Subsystem_Vars(SubsystemBase):
     def copy(self, name):
         r = super().copy(name)
         r.add_ins(Instruction_Init("init", r, 1))
+        r.add_ins(Instruction_Clean("clean", r, 0))
         r.add_ins(Instruction_DefineVar("def", r))
+        r.add_ins(Instruction_Pass("set", r, 0))
+        r.add_ins(Instruction_Pass("add", r, 0))
+        r.add_ins(Instruction_Pass("sub", r, 0))
+        r.add_ins(Instruction_Pass("copy", r, 0))
+        r.add_ins(Instruction_Pass("copyadd", r, 0))
+        r.add_ins(Instruction_Pass("copysub", r, 0))
+        r.add_ins(Instruction_Pass("move", r, 0))
+        r.add_ins(Instruction_Pass("moveadd", r, 0))
+        r.add_ins(Instruction_Pass("moveadd", r, 0))
 
         return r
 
@@ -146,6 +176,73 @@ class Subsystem_Vars(SubsystemBase):
         else:
             for arg in args:
                 self.add_var(arg)
+
+    def put_clean(self, args:list):
+        if len(args) == 1 and args[0] == "fast":
+            return
+
+        self._main.put(">" * self.offset())
+        self._main.put("[-]>" * self.size())
+        self._main.put("<" * (self.offset() + self.size()))
+
+    def put(self, name, args:list):
+        if name == "init":
+            self.put_init(args)
+            return
+        if name == "clean":
+            self.put_init(args)
+            return
+
+        if name in ["move", "moveadd", "movesub", "copy", "copyadd", "copysub"]:
+            vss = args
+
+            if len(vss) == 0:
+                return
+
+            for i in vss:
+                if not self._main.is_sub(i, "vars"):
+                    Exception(f"destinations of [vars:{name}] should be vars")
+                if set(self._vars) <= set(self._main.variablesof(i)):
+                    Exception(f"destinations of [vars:{name}] should be subset of this vars")
+
+            for v in self._vars:
+                self._main.put_invoke(name, [self.name() + ":" + v] + [vs + ":" + v for vs in vss])
+            
+            return
+
+        name0 = name
+        sign = ""
+
+        if name == "add":
+            sign = "+"
+            name = "set"
+        if name == "sub":
+            sign = "-"
+            name = "set"
+
+        if name == "set" and len(args) >= self.size():
+            imms = args[:self.size()]
+            vss = args[self.size():]
+
+            for i in imms:
+                if not self._main.is_val(i):
+                    Exception(f"sources of [vars:set] should be immediates")
+
+            for i in vss:
+                if not self._main.is_sub(i, "vars"):
+                    Exception(f"additional destinations of [vars:set] should be vars")
+                if set(self._vars) <= set(self._main.variablesof(i)):
+                    Exception(f"additional destinations of [vars:set] should have variables in this vars")
+
+            vss = [self.name()] + vss
+
+            for i in range(self.size()):
+                imm = imms[i]
+                self._main.put_invoke("set", [imm] + [sign + j + ":" + self._vars[i] for j in vss])
+            
+            return
+
+        raise Exception(f"unknown instruction [vars:{name0}/{len(args)}] {self.name()}(vars):len={self.size()}")
 
 class Subsystem_Code(SubsystemBase):
     def __init__(self, _name="code"):

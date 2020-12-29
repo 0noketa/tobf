@@ -1,5 +1,5 @@
 
-# a to-bf compiler for small outouts
+# a to-bf compiler for small programs
 # abi:
 #   dynamic_addressing: every address is 8bits. only 256 bytes.
 #     16bits addressing is planned as that cant be used both systems in once.
@@ -72,14 +72,15 @@ if __name__ == "__main__":
     verbose = False
     args = sys.argv[1:]
 
-    if len(args) > 0 and args[0] == "-v":
-        args = args[1:]
-        verbose = True
-
     if len(args) == 0:
         print("py tobf source")
         exit(0)
 
+    src = args[0]
+
+    if len(args) > 1 and args[1] == "-v":
+        args = args[1]
+        verbose = True
 
     compiler = Tobf()
     compiler.install_subsystem(Subsystem_Enums())
@@ -90,5 +91,5 @@ if __name__ == "__main__":
     compiler.install_subsystem(Subsystem_Memory())
     compiler.install_subsystem(Subsystem_Str())
 
-    compiler.compile_file(args[0], verbose)
+    compiler.compile_file(src, verbose)
 

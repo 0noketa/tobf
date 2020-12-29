@@ -11,6 +11,21 @@ def split(s:str, sep=None, maxsplit=-1) -> list:
     else:
         return list(map(str.strip, s.strip().split(sep=sep, maxsplit=maxsplit)))
 
+def split_list(src:list, sep) -> list:
+    r = []
+    r2 = []
+
+    for i in src:
+        if i == sep:
+            r.append(r2)
+            r2 = []
+        else:
+            r2.append(i)
+
+    if len(r2):
+        r.append(r2)
+
+    return r
 
 def separate_sign(name):
     if type(name) == str and len(name) > 0 and name[0] in ["+", "-"]:
@@ -42,8 +57,19 @@ def calc_small_pair(n, vs):
 
 
 class Mainsystem:
+    def is_val(self, value) -> bool:
+        """is valid immediate"""
+        return type(value) == int or type(value) == str and value.isdigit()
     def is_var(self, value) -> bool:
         """is valid variable"""
+        return False
+    def is_signed(self, value) -> bool:
+        """is valid signed variable"""
+        return (type(value) == "str" and len(value) > 1
+            and value[0] in ["+", "-"]
+            and self.is_var(value[1:]))
+    def is_sub(self, value, typ="") -> bool:
+        """is valid subsystem"""
         return False
     def has_var(self, name:str) -> bool:
         """is valid variable of main"""
@@ -53,6 +79,9 @@ class Mainsystem:
     def valuesof(self, name:str) -> int:
         """constant"""
         return 0
+    def variablesof(self, name:str) -> list:
+        """list of variables in a subsystem"""
+        return []
     def put(self, s:str):
         pass
     def put_with(self, addr:int, s:str):
@@ -203,7 +232,7 @@ class SubsystemBase:
     def put(self, name:str, args:list):
         if name == "init":
             return self.put_init(args)
-        if name == "clean" and not self._initialized:
+        if name == "clean":
             return self.put_clean(args)
 
         ins: InstructionBase = self._instructions[name]

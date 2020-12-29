@@ -1,22 +1,21 @@
-
-loadas dec code mod_dec3
-loadas x vars a b c
-loadas y vars a b c
-loadas z vars a b c
+n x y z
+loadas in code mod_input
+loadas out code mod_print
 loadas n vars a b c
 
-dec:@set 0 0 1 x
+set 1 x
 
-dec:@readln n
-dec:@while n
-    dec:@writeln x
+in:readlnint n
 
-    dec:@copy x z
-    dec:@moveadd y x
-    dec:@move z y
+while n
+    out:writelnint x
 
-    dec:@dec n
-dec:@endwhile n
+    copy x z
+    moveadd y x
+    move z y
+
+    dec n
+endwhile n
 
 end
 

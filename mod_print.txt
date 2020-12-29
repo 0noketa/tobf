@@ -72,10 +72,22 @@ a x b y c z e n m
     print a
     clear a
 
+:space
+    set 32 a
+    print a
+    clear a
+
 :writelnint arg
     writeint arg
     newline
 
+:writeint+space arg
+    writeint arg
+    space
+
+:writeint+n arg n
+    writeint arg
+    print n
 
 end
 

@@ -1,8 +1,6 @@
 
 loadas dec6 code mod_dec6
-loadas x vars a b c d e f
-loadas y vars a b c d e f
-loadas z vars a b c d e f
+! loadas x | loadas y | loadas z <- vars a b c d e f
 
 dec6:@set 0 0 0 0 0 1 x
 

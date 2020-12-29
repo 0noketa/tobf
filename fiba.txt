@@ -1,0 +1,22 @@
+n m c ln x y z
+set 13 n
+set 65 c
+set 10 ln
+set 1 x
+
+while n
+    copy x m
+    while m
+        print c
+        dec m
+    endwhile m
+    print ln
+
+    copy x z
+    moveadd y x
+    move z y
+    dec n
+    inc c
+endwhile n
+
+end

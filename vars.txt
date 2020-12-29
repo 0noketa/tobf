@@ -1,0 +1,58 @@
+one dot m nl one e
+! loadas pos | loadas tmp <- vars x y
+! loadas v | loadas v2 | loadas v3 <- vars x y
+loadas out code mod_print
+
+v:add 3 4
+v2:add 4 3
+v3:add 8 6
+
+set 48 one dot
+set 1 +one -dot -dot
+set 10 nl
+
+# (20,10)-(1,1)
+# plot positions
+
+! set 10 | while <- pos:y
+    ! set 20 | while <- pos:x
+        bf !
+        set 1 m
+
+        ! pos:copy | v:copysub <- tmp
+        ! bool <- tmp:x | tmp:y
+        ! moveadd tmp:x | bool_not <- tmp:y
+        if tmp:y
+            print one
+            dec m
+        endif tmp:y
+
+        bf !
+        ! pos:copy | v2:copysub <- tmp
+        ! bool <- tmp:x | tmp:y
+        ! moveadd tmp:x | bool_not <- tmp:y
+        if tmp:y
+            if m
+                ! inc | print | dec <- one
+            endif m
+        endif tmp:y
+
+        bf !
+        ! pos:copy | v3:copysub <- tmp
+        ! bool <- tmp:x | tmp:y
+        ! moveadd tmp:x | bool_not <- tmp:y
+        if tmp:y
+            if m
+                ! inc one | print | dec one <- one
+            endif m
+        endif tmp:y
+
+        if m
+            print dot
+        endif m
+    ! dec | endwhile <- pos:x
+
+    print nl
+! dec | endwhile <- pos:y
+
+end
