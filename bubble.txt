@@ -1,0 +1,94 @@
+n i j k v v2 v3 v4 e r
+
+
+load str 32
+    str:@set number of elements:
+    str:@writeln
+unload str
+
+loadas in code mod_input
+    in:readlnint n
+unload in
+
+
+# set 1 v2
+inc v2
+copy n v
+ifnotin v 0 1
+    dec v2
+endifnotin v 0 1
+
+ifelse v2 e
+    load str 32
+        str:@set error.
+        str:@writeln
+
+        str:@set number must be >=2
+        str:@writeln
+    unload str
+else v2 e
+    load str 32
+        str:@set EOL separated elements:
+        str:@writeln
+    unload str
+
+    loadas a mem 255
+
+
+    # input
+    loadas in code mod_input
+        # clear i
+        copyadd n j
+        while j
+            in:readlnint v
+            a:@w_moveadd v i
+
+            inc i
+            dec j
+        endwhile j
+    unload in
+
+
+    # sort
+
+    # r is true when any swap happend
+    inc r
+    while r
+        dec r
+
+        clear i k
+        inc k
+        ! copy n | dec <- j
+        while j
+            a:@r_copy i v v3
+            a:@r_copy k v2 v4
+
+            ifgt v3 v4 e
+                a:@w_copy v2 i
+                a:@w_copy v k
+
+                set 1 r
+            endifgt v3 v4 e
+
+            inc i k
+            dec j
+        endwhile j
+    endwhile r
+
+
+    # output
+    loadas out code mod_print
+        clear i
+        copyadd n j
+        while j
+            a:@r_copy i v
+            out:writelnint v
+
+            inc i
+            dec j
+        endwhile j
+    unload out
+endifelse v2 e
+
+
+end

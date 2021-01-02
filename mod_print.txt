@@ -1,6 +1,7 @@
 a x b y c z e n m
 
 :clean
+    clear a x b y c z e n m
 
 :_copyadd x y
     moveadd x e

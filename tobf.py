@@ -68,11 +68,21 @@
 # endif cond_var
 #   like "next i" in basic. this rule simplifies compiler.
 #   currently compiler disallows no cond_var instructions.
+#   breaks cond_var
 # ifelse cond_var work_var
 #   work_var carries run_else flag
 #   cond_var is avarable until "else"
 # else cond_var work_var
 # endifelse cond_var work_var
+# ifgt var0 var1 tmp_var
+#   skips block if var1 > var0.
+#   breaks vars. no variable in args can not be used in this bleck.
+# endifgt var0 var1 tmp_var
+#   breaks vars.
+# ifnotin cond_var ...imms
+# endifnotin cond_var ...imms
+#   skips block if any immediate equals to cond_var.
+#   breaks cond_var
 # while cond_var
 # endwhile cond_var
 # every ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
@@ -260,7 +270,10 @@ class Tobf(Mainsystem):
         else:
             raise Exception(f"failed to get address of {value}")
 
-    def valueof(self, value) -> int:
+    def byteof(self, value, byte=False) -> int:
+        return self.valueof(value, byte=True)
+
+    def valueof(self, value, byte=False) -> int:
         if type(value) != str:
             return value
         elif ":" in value:
@@ -269,7 +282,7 @@ class Tobf(Mainsystem):
 
             return sub.valueof(name)
         elif value.isdigit():
-            return int(value)
+            return int(value) & 0xFF if byte else int(value)
         else:
             return value
 
@@ -738,6 +751,40 @@ class Tobf(Mainsystem):
 
             self.with_addr(addr, "[")
             self.uplevel()
+
+            return True
+
+        # validation
+        if name in ["ifnotin", "endifnotin"]:
+            if not self.is_var(args[0]):
+                raise Exception(f"first arg of [{name}] should be variable")
+
+            if len(list(filter(None, map(self.is_val, args[1:])))) != len(args[1:]):
+                raise Exception(f"currently [{name}] accepts only one variable and immediates")
+
+        if name == "ifnotin":
+            addr = self.addressof(args[0])
+
+            args2 = args[1:]
+            args2 = set(map(self.byteof, args2))
+            args2 = sorted(args2)
+
+            base = 0
+            for i in args2:
+                j = i - base
+                base = i
+
+                self.with_addr(addr, "-" * j + "[")
+
+            self.uplevel()
+
+            return True
+
+        if name == "endifnotin":
+            addr = self.addressof(args[0])
+
+            self.downlevel()
+            self.with_addr(addr, "[-]" + "]" * (len(args) - 1))
 
             return True
 
