@@ -1,4 +1,4 @@
-one dot m nl one e
+one dot m nl e
 ! loadas pos | loadas tmp <- vars x y
 ! loadas v | loadas v2 | loadas v3 <- vars x y
 loadas out code mod_print
@@ -7,7 +7,7 @@ v:add 3 4
 v2:add 4 3
 v3:add 8 6
 
-set 48 one dot
+set '0 one dot
 set 1 +one -dot -dot
 set 10 nl
 
@@ -16,7 +16,6 @@ set 10 nl
 
 ! set 10 | while <- pos:y
     ! set 20 | while <- pos:x
-        bf !
         set 1 m
 
         ! pos:copy | v:copysub <- tmp
@@ -27,7 +26,6 @@ set 10 nl
             dec m
         endif tmp:y
 
-        bf !
         ! pos:copy | v2:copysub <- tmp
         ! bool <- tmp:x | tmp:y
         ! moveadd tmp:x | bool_not <- tmp:y
@@ -37,7 +35,6 @@ set 10 nl
             endif m
         endif tmp:y
 
-        bf !
         ! pos:copy | v3:copysub <- tmp
         ! bool <- tmp:x | tmp:y
         ! moveadd tmp:x | bool_not <- tmp:y

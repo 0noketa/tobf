@@ -12,6 +12,7 @@
 #   program: var_decl "\n" instructions "end" "\n"
 #   var_decl: id (" " val)*
 #   instructions: (id (" " val)* "\n")*
+#   val: digits | "'" | "'" char | id
 # instructions:
 # bool io_var ...out_vars
 #   if io_var is not 0, io_var becomes to 1. and copies io_var to out_vars.
@@ -19,7 +20,7 @@
 # bool_not io_var ...out_vars
 #   if io_var is not 0, io_var becomes to 0. or else to 1. besides copies io_var to out_vars.
 # set imm ...out_vars_with_sign
-#   every destination can starts with "+" or "-", they means add or sub instead of set 
+#   every destination can starts with "+" or "-", they means add or sub instead of set
 #   aliases_with_inplicit_signs:
 #     add imm ...out_vars
 #     sub imm ...out_vars
@@ -29,13 +30,7 @@
 #       imm as 1 and sign as "+"
 #     dec ...out_vars
 #       imm as 1 and sign as "-"
-# set_char imm_char ...out_vars_with_sign
-# add_char imm_char ...out_vars
-# sub_char imm_char ...out_vars
-#   uses char literal instead of charcode digits
 # eq imm ...out_vars
-# eq_char imm_char ...out_vars
-#   replaces out_vars with result of comparision with imm
 # moveeq in_var ...out_vars
 # copyeq in_var ...out_vars
 #   similer to eq
@@ -43,16 +38,16 @@
 # nand in_var out_var
 # or in_var ...out_vars
 # nor in_var ...out_vars
-#   similer to eq. breaks in_var 
+#   similer to eq. breaks in_var
 # move in_var ...out_vars_with_sign
 #   in_var becomes to 0
 #   aliases_with_implicit_signs:
-#     moveadd in_var ...out_vars 
-#     movesub in_var ...out_vars 
+#     moveadd in_var ...out_vars
+#     movesub in_var ...out_vars
 # copy in_var ...out_vars_with_sign
 #   aliases_with_inplicit_signs:
-#     copyadd in_var ...out_vars 
-#     copysub in_var ...out_vars 
+#     copyadd in_var ...out_vars
+#     copysub in_var ...out_vars
 # resb imm
 #   declare size of static memory. default=number of vars. works when no subsystem was loaded.
 # load subsystem_name ...args
@@ -88,11 +83,28 @@
 # every ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
 # ! ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
 #   invoke every instruction with args + sub_args
+# bf src
+#   inline brainfuck.
+# include_bf file_name mem_size
+#   injects brainfuck code from file. included code should not leave changed pointer.
+#   can be used to include something such as output of very smart txt2bf.
+#   maybe some compiler generates includable code.
+# include_bf file_name mem_size ...io_vars
+#   before bf, copies io_vars to bf_memory_area.
+#   after bf, moves bf_memory_area to variables.
+# include_bf file_name
+#   bf code uses only 1 byte. useless.
+# include_bf file_name io_var
+#   runs at selected var. useless.
+# include_c file_name stack_size function_name ...in_vars out_var
+#   uses C function.
 # end
 #   can not be omitted
 
 import io
 from base import Mainsystem, SubsystemBase, InstructionBase, split, split_list, separate_sign, calc_small_pair, MacroProc
+from bfa import Bfa
+from c2bf import C2bf
 
 
 class Tobf(Mainsystem):
@@ -120,7 +132,7 @@ class Tobf(Mainsystem):
         self._subsystems[subsystem.name()] = subsystem
 
     # maybe broken. do not unload if subsystem is not placed at the last.
-    # and currently no subsystem can calculate its size without assigned baseaddress. 
+    # and currently no subsystem can calculate its size without assigned baseaddress.
     def offsetof_next_subsystem(self) -> int:
         if len(self._loaded_subsystems) == 0:
             return self._reserved if self._reserved != -1 else len(self._vars) + 1
@@ -161,7 +173,7 @@ class Tobf(Mainsystem):
     def put_load(self, name:str, args:list, alias=""):
         if not (name in self._subsystems.keys()):
             raise Exception(f"subsystem {name} is not installed")
-        
+
         if alias == "":
             alias = name
 
@@ -210,11 +222,11 @@ class Tobf(Mainsystem):
 
     def with_addr(self, addr:int, s:str):
         self.begin_global(addr)
-        self.put(s)        
+        self.put(s)
         self.end_global(addr)
 
     def put_with(self, addr:int, s:str):
-        self.with_addr(addr, s)        
+        self.with_addr(addr, s)
 
     def put_with_every(self, addrs:list, s:str):
         used = []
@@ -223,7 +235,7 @@ class Tobf(Mainsystem):
                 continue
 
             used.append(addr)
-            self.with_addr(addr, s)   
+            self.with_addr(addr, s)
 
     def has_var(self, name:str) -> bool:
         return name in self._vars
@@ -264,7 +276,7 @@ class Tobf(Mainsystem):
 
             return sub.addressof(name)
         elif self.has_var(value):
-            return self.addressof_var(value) 
+            return self.addressof_var(value)
         elif value.isdigit():
             return int(value)
         else:
@@ -281,8 +293,8 @@ class Tobf(Mainsystem):
             sub = self.subsystem_by_alias(sub_name)
 
             return sub.valueof(name)
-        elif value.isdigit():
-            return int(value) & 0xFF if byte else int(value)
+        elif self.is_val(value):
+            return super().valueof(value)
         else:
             return value
 
@@ -292,13 +304,13 @@ class Tobf(Mainsystem):
 
     def begin(self, i):
         self.put(">" * int(i + 1))
-        
+
     def end(self, i):
         self.put("<" * int(i + 1))
 
     def with_var(self, i, s):
         self.begin(i)
-        self.put(s)        
+        self.put(s)
         self.end(i)
 
     def inc_or_dec(self, c, n):
@@ -388,7 +400,7 @@ class Tobf(Mainsystem):
 
         for out_addr in out_addrs:
             if type(out_addr) == str:
-                sign, out_addr = separate_sign(out_addr)        
+                sign, out_addr = separate_sign(out_addr)
                 addr = self.addressof(out_addr)
             else:
                 sign = ""
@@ -436,10 +448,10 @@ class Tobf(Mainsystem):
 
         for name in args:
             sign, name = separate_sign(name)
-            addr = self.addressof(name) 
+            addr = self.addressof(name)
 
             self.begin_global(addr)
-            self.put_cmd(value, sign)            
+            self.put_cmd(value, sign)
             self.end_global(addr)
 
         if n > 1:
@@ -474,18 +486,6 @@ class Tobf(Mainsystem):
             sign = "+" if name == "add" else "-"
             name = "set"
             args = [args[0]] + [sign + x for x in args[1:]]
-        if name == "set_char":
-            sign = ""
-            name = "set"
-            args = [str(ord(args[0]))] + [sign + x for x in args[1:]]
-        if name == "eq_char":
-            sign = ""
-            name = "eq"
-            args = [str(ord(args[0]))] + [sign + x for x in args[1:]]
-        if name in ["add_char", "sub_char"]:
-            sign = "+" if name == "add_char" else "-"
-            name = "set"
-            args = [str(ord(args[0]))] + [sign + x for x in args[1:]]
         if name in ["copyadd", "copysub"]:
             sign = "+" if name == "copyadd" else "-"
             name = "copy"
@@ -603,7 +603,7 @@ class Tobf(Mainsystem):
                 # it = arg - imm
                 self.load_it(arg)
                 self.put_set(v, ["-0"], addressof_tmp=addr)
-                
+
                 self.put_with(addr, "+")
                 self.put("[")
                 self.put_with(addr, "-")
@@ -626,7 +626,7 @@ class Tobf(Mainsystem):
                 if name == "copyeq" or len(args) > 2:
                     self.put_with(addr, "+")
                 self.put_with(addr0, "-]")
-                
+
                 if name == "copyeq" or len(args) > 2:
                     self.put_with(addr, "[")
                     self.put_with(addr0, "+")
@@ -680,7 +680,7 @@ class Tobf(Mainsystem):
                     self.put("[")
                     self.put_with(addr, "+")
                     self.put("-]")
-    
+
             self.put_with(addr0, "-")
 
             return True
@@ -708,7 +708,7 @@ class Tobf(Mainsystem):
                 self.put_with(addr, "+" if name == "and" else "-")
                 self.put_with(addr0, "[-]]")
                 self.put("-]")
-    
+
             return True
 
         if name in ["every", "!"]:
@@ -731,7 +731,7 @@ class Tobf(Mainsystem):
 
             return True
 
-        if name in "copy":
+        if name == "copy":
             # move to it
             self.load_it(args[0])
 
@@ -741,7 +741,7 @@ class Tobf(Mainsystem):
             return True
 
 
-        if name in "move":
+        if name == "move":
             self.put_move(args[0], args[1:])
 
             return True
@@ -842,7 +842,7 @@ class Tobf(Mainsystem):
             args[0] = left
             args[1] = right
 
-        if name in "ifgt":
+        if name == "ifgt":
             a_left = self.addressof(args[0])
             a_right = self.addressof(args[1])
             a_tmp = self.addressof(args[2])
@@ -869,7 +869,7 @@ class Tobf(Mainsystem):
 
             return True
 
-        if name in "endifgt":
+        if name == "endifgt":
             a_left = self.addressof(args[0])
             a_right = self.addressof(args[1])
             a_tmp = self.addressof(args[2])
@@ -885,17 +885,133 @@ class Tobf(Mainsystem):
 
             return True
 
+        if name == "include_bf":
+            if len(args) < 1:
+                raise Exception("[include_bf/0] is not implemented")
+
+            try:
+                with io.open(args[0]) as bff:
+                    bf = bff.read()
+            except Exception:
+                raise Exception(f"failed to open {args[0]}")
+
+            if len(args) > 1 and args[1].isdigit():
+                mem_size = int(args[1])
+                vs = args[2:]
+
+                if len(vs) > mem_size:
+                    raise Exception("variables [include_bf] passed can not be stored to bf memory area.")
+            else:
+                vs = args[1:]
+
+                if len(vs) > 0:
+                    mem_size = len(vs)
+                else:
+                    mem_size = 1
+
+            if mem_size <= 1 and len(vs) == 0:
+                self.put_with(0, bf)
+
+                return True
+
+            if len(vs) == mem_size:
+                direct_io = True
+
+                p = -1
+                for i in vs:
+                    addr = self.addressof(i)
+
+                    if p == -1:
+                        p = addr
+                    elif p + 1 == addr:
+                        p += 1
+                    else:
+                        direct_io = False
+                        break
+
+                if direct_io:
+                    self.put_with(self.addressof(vs[0]), bf)
+
+                    return True
+
+            bf_ptr = self.offsetof_next_subsystem()
+
+            for i in range(len(vs)):
+                addr = self.addressof(vs[i])
+
+                self.put_with(addr, "[")
+                self.put_with(bf_ptr + i, "+")
+                self.put_with(addr, "-]")
+
+            self.put_with(bf_ptr, bf)
+
+            for i in range(len(vs)):
+                addr = self.addressof(vs[i])
+
+                self.put_with(bf_ptr + i, "[")
+                self.put_with(addr, "+")
+                self.put_with(bf_ptr + i, "-]")
+
+            for i in range(len(vs), mem_size):
+                self.put_with(bf_ptr + i, "[-]")
+
+            return True
+
+        if name == "include_c":
+            if len(args) < 4:
+                raise Exception(f"[include_c/{len(args)}] is not implemented")
+
+            c_file_name = args[0]
+            c_stack_size = int(args[1])
+            c_func_name = args[2]
+            c_func_args_and_result = args[3:]
+            c_func_args = c_func_args_and_result[:-1]
+            c_base_ptr = self.offsetof_next_subsystem()
+
+            shared_vars = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
+
+            try:
+                c = C2bf(c_file_name, shared_vars=shared_vars, stack_size=c_stack_size)
+                c_func_args2 = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
+                c_startup = f"""{{ __tobf_shared0 = {c_func_name}({",".join(c_func_args2)}); }}"""
+                bf, _ = c.compile_to_bf(c_startup)
+            except Exception:
+                raise Exception(f"failed to open {c_file_name}")
+
+            for i in range(len(c_func_args)):
+                arg = c_func_args[i]
+
+                if self.is_var(arg):
+                    addr = self.addressof(arg)
+
+                    self.put_with(addr, "[")
+                    self.put_with(c_base_ptr + i, "+")
+                    self.put_with(addr, "-]")
+                else:
+                    v = self.valueof(arg)
+                    self.put_with(c_base_ptr + i, "+" * v)
+
+            self.put_with(c_base_ptr, bf)
+
+            addr = self.addressof(c_func_args_and_result[-1])
+
+            self.put_with(c_base_ptr, "[")
+            self.put_with(addr, "+")
+            self.put_with(c_base_ptr, "-]")
+
+            return True
+
 
         raise Exception(f"unknown instruction {name}")
 
     def compile_instruction(self, src):
         if type(src) == str:
             src = split(src)
-            
+
         name, *args = src
 
         return self.put_invoke(name, args)
-    
+
     def compile_all(self, src:list, comments=False):
         for i in src:
             if comments or i[0] == "bf":
@@ -907,7 +1023,7 @@ class Tobf(Mainsystem):
             self.compile_instruction(i)
 
         self.put("[-]")
-    
+
     def compile_file(self, file_name, comments=False):
         size, vars, macros = Tobf.read_file(file_name)
 
@@ -949,7 +1065,7 @@ class Tobf(Mainsystem):
 
                         if not (label in ms.keys()):
                             ms[label] = MacroProc(label, [], [])
-                        
+
                         if len(ms[label].params) == 0:
                             ms[label].params = cod[1:].copy()
 

@@ -1,6 +1,6 @@
 
 # zasciiz string (no size-limitation)
-# tmp, BOS, ...str, EOS, tmp
+# tmp, BOS, ...str, EOS, tmp, tmp, tmp, tmp
 # init n
 #   initializes for n bytes string
 # clean
@@ -10,17 +10,14 @@
 # @set ...literal
 #   stores chars in every literal (can not include any of spaces. will be joined by single space)
 # @+set literal
-#   alias of @set+ . any of them will be renamed or removed.
-# @set+ literal
 #   appends chars in literal (can not include any of spaces)
 # @readln
-#   reads string ends with EOL and set it without EOL. unsafe as gets() in C.
-# @readln+
-#   reads string ends with EOL and append it without EOL. unsafe as gets() in C.
+#   reads string ends with EOL and set it without EOL. unsafe as gets() is.
+# @+readln
+#   reads string ends with EOL and append it without EOL. unsafe as gets() is.
 # @readln n
-#   safe version. input size is upto n bytes. not implemented.
-# @readln+ n
-#   safe version. input size is upto n bytes. not implemented.
+# @+readln n
+#   a bit safe version. input size is upto n bytes. currently does not stop at EOF.
 # @write
 #   writes string
 # @writeln
@@ -41,6 +38,10 @@
 #   removes first char
 # @drop ...out_vars
 #   removes first chars. and stores to out_vars
+# @move ...out_strs
+#   moves all chars to out_strs
+# @+move_reversed ...out_strs
+#   moves all chars to out_strs in reversed order
 # @len ...out_vars
 #   count chars in bytes. result is uint(<256).
 
@@ -64,7 +65,7 @@ class Subsystem_Str(SubsystemBase):
     def str_init(self, _ssize=16):
         if not self._str_initialized:
             self._str_size = _ssize
-            self.resize(self._str_size + 4)
+            self.resize(self._str_size + 6)
             self._str_initialized = True
 
     def str_clean(self):
@@ -102,10 +103,15 @@ class Subsystem_Str(SubsystemBase):
         return (name in [
                 "init", "clean",
                 "@clear",
-                "@readln", "@readln+", "@+readln", "@write", "@writeln",
+                "@readln", "@+readln", "@read", "@+read", "@write", "@writeln",
                 "@pop", "@drop"]
             or len(args) > 0
-                and name in ["@push", "@copypush", "@set", "@set+", "@+set", "@len"]
+                and name in [
+                    "@push", "@copypush", "@set", "@+set", "@len",
+                    "@move", "@+move", "@move_reversed", "@+move_reversed"]
+            or len(args) > 1
+                and name in [
+                    "@split", "@+split"]
             or super().has_ins(name, args))
 
     def put(self, name: str, args: list):
@@ -144,21 +150,58 @@ class Subsystem_Str(SubsystemBase):
 
             return
 
-        if name == "@readln":
+        if name in ["@readln", "@read"]:
             self.put("@clear", [])
             name = "@+readln"
 
-        if name in "@+readln":
+        if name == "@+readln":
             if len(args) == 0:
                 self._main.put_with(self.offset(), ">>[>],----------[++++++++++>,----------]<[<]<")
 
                 return
 
-            raise Exception("str:@readln/1 is stub")
+            arg = args[0]
 
-            for arg in args:
+            if self._main.is_var(arg):
+                self._main.put_with(arg, "[")
+                self._main.put_with(self.offset(), ">>[>]>+<[<]<")
+                self._main.put_with(arg, "-]")
+            else:
+                size = self._main.valueof(arg)
+                self._main.put_with(self.offset(), ">>[>]>" + "+" * size +"<<[<]<")
+
+            self._main.put_with(self.offset(),
+                ">>[>]>[->>>+<<<<,"
+                # 255
+                + "+[-"
+                # 26
+                + ("----- ----- ----- ----- ----- -["
+                    + "+++++ +++++ +++++ +++++ +++++ +") 
+                + "----------[>>+>+<<<-]"
+                # 26
+                + "]"
+                # 255
+                + "]"
+                + ">>[<<+>>-]>[<<<++++++++++>>>>-<[-]]>[<<<[-]>>>-]<<<[>+<-]>]<<<[<]<")
+
+            return
+
+        # uses 2 right tmp
+        if name == "@+read":
+            if len(args) == 0:
+                self._main.put_with(self.offset(), ">>[>]>+<<[<]<")
+            else:
+                arg = args[0]
+
                 if self._main.is_var(arg):
-                    pass
+                    self._main.put_with(arg, "[")
+                    self._main.put_with(self.offset(), ">>[>]>+<[<]<")
+                    self._main.put_with(arg, "-]")
+                else:
+                    size = self._main.valueof(arg)
+                    self._main.put_with(self.offset(), ">>[>]>" + "+" * size +"<<[<]<")
+
+            self._main.put_with(self.offset(), ">>[>]>[-[>+<-]<,>>]<<[<]<")
 
             return
 
@@ -250,6 +293,108 @@ class Subsystem_Str(SubsystemBase):
                 self._main.put_with(self.offset(), "[")
                 self._main.put_with(addr, "-" if sign == "-" else "+")
                 self._main.put_with(self.offset(), "-]")
+
+            return
+
+        if name in ["@move", "@move_reversed", "@split"]:
+            if name == "@split":
+                args2 = args[1:]
+            else:
+                args2 = args
+
+            for arg in args2:
+                if not self._main.is_sub(arg, "str"):
+                    raise Exception(f"[str:{name}] takes only str")
+
+                arg_str: SubsystemBase = self._main.subsystem_by_alias(arg)
+
+                arg_str.put("@clear", [])
+
+            name = "@+" + name[1:]
+
+        if name in ["@+move", "@+move_reversed"]:
+            ins_pop = "@drop" if name == "@+move" else "@pop"
+
+            self.put(ins_pop, [0])
+            self._main.put("[")
+
+            self._main.put("[")
+
+            if len(set(args)) != len(args):
+                raise Exception(f"[str:{name}] takes every str only once")
+
+            for arg in args:
+                if not self._main.is_sub(arg, "str"):
+                    raise Exception(f"[str:{name}] takes only str")
+
+                arg_str: SubsystemBase = self._main.subsystem_by_alias(arg)
+        
+                if arg_str == self:
+                    raise Exception("[str:@move] can not move to the same str")
+
+                self._main.put_with(arg_str.offset(), ">>[>]>+<<[<]<")
+
+            self._main.put("-]")
+
+            for arg in args:
+                arg_str: SubsystemBase = self._main.subsystem_by_alias(arg)
+        
+                self._main.put_with(arg_str.offset(), ">>[>]>[<+>-]<[<]<")
+
+            self.put(ins_pop, [0])
+            self._main.put("]")
+
+            return
+
+        if name == "@+split":
+            sep = args[0]
+
+            if not self._main.is_val(sep):
+                raise Exception(f"first arg of [str:{name}] should be immediate")
+
+            n_sep = self._main.valueof(sep)
+            args = args[1:]
+
+            for arg in args:
+                arg_str: SubsystemBase = self._main.subsystem_by_alias(arg)
+
+                arg_str.put("@clear", [])
+
+            for arg in args:
+                arg_str: SubsystemBase = self._main.subsystem_by_alias(arg)
+
+                """
+                inc it
+                while it
+                    clear it
+                    self:drop self:tmp_L
+                    if self:L
+                        sub self:L sep
+                        if self:L
+                            add self:L sep
+                            self:@push self:L
+                            inc it
+                """
+                self._main.put("+[[-]")
+
+                # safe version of self.put("@drop", [self.offset()])
+                self._main.put_with(self.offset(), "[-]>>[<<+>>-]>[[<+>-]>]<<[<]<")
+
+                n, m = calc_small_pair(n_sep, 1)
+                if m == 1:
+                    self._main.put_with(self.offset(), "[" + ("-" * n) + "[" + ("+" * n))
+                else:
+                    self._main.put_with(self.offset(), "[>" + ("+" * n) + "[<" + ("-" * m) + ">-]<[>" + ("+" * n) + "[<" + ("+" * m) + ">-]<" )
+
+                # safe version of arg_str.put("@push", [self.offset()])
+                self._main.put_with(self.offset(), "[")
+                self._main.put_with(arg_str.offset(), ">>[>]>+<<[<]<")
+                self._main.put_with(self.offset(), "-]")
+                self._main.put_with(arg_str.offset(), ">>[>]>[<+>-]<<[<]<")
+
+                self._main.put("+")
+                self._main.put_with(self.offset(), "[-]]]")
+                self._main.put("]")
 
             return
 

@@ -1,0 +1,17 @@
+x y z
+
+loadas out code mod_print
+
+# brainfuck source file as subroutine
+set 3 x
+include_bf incbf_sub.bf x y z
+
+! out:writelnint <- x | y | z
+
+# c function as subroutine
+include_c incbf_sub.c 12  c_func 2 y z  x
+
+out:writelnint x
+
+end
+

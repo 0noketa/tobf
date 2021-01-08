@@ -3,7 +3,7 @@ n m e z
 # 3 columns decimal integer
 
 :init
-    set 48 z
+    set '0 z
 :clean
     clear z
 
@@ -190,7 +190,7 @@ n m e z
     sub tail n
     while n
         add tail n
-        sub 48 n
+        sub '0 n
         move x:b x:a
         move x:c x:b
         move n x:c

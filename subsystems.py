@@ -172,7 +172,7 @@ class Subsystem_Vars(SubsystemBase):
 
     def put_init(self, args:list):
         if len(args) == 1 and args[0].isdigit():
-            self.resize(int(args[0]))
+            self.resize(self._main.valueof(args[0]))
         else:
             for arg in args:
                 self.add_var(arg)

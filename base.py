@@ -59,7 +59,11 @@ def calc_small_pair(n, vs):
 class Mainsystem:
     def is_val(self, value) -> bool:
         """is valid immediate"""
-        return type(value) == int or type(value) == str and value.isdigit()
+        sign, value = separate_sign(value)
+        return (type(value) == int
+            or type(value) == str
+                and (value.isdigit()
+                    or len(value) > 0 and value[0] == "'"))
     def is_var(self, value) -> bool:
         """is valid variable"""
         return False
@@ -76,16 +80,35 @@ class Mainsystem:
         return False
     def addressof(self, name:str) -> int:
         return 0
+    def valueof(self, value:str) -> int:
+        """constant"""
+        if not self.is_val(value):
+            return -1024
+
+        sign, value = separate_sign(value)
+
+        if value[0] == "'":
+            return ord(value[1]) if len(value) > 1 else 32
+        else:
+            return int(value)
     def valuesof(self, name:str) -> int:
         """constant"""
         return 0
     def variablesof(self, name:str) -> list:
         """list of variables in a subsystem"""
         return []
+    def offsetof_subsystem(self, alias:str) -> int:
+        return 0
+    def subsystem_by_name(self, name):
+        """returns SubsystemBase"""
+        return SubsystemBase()
+    def subsystem_by_alias(self, name):
+        """returns SubsystemBase"""
+        return SubsystemBase()
     def put(self, s:str):
         pass
     def put_with(self, addr:int, s:str):
-        """\>\>\>something<<<"""
+        """>>>something<<<"""
         pass
     def put_invoke(self, name:str, args:list):
         pass
@@ -156,7 +179,7 @@ class SubsystemBase:
     def add_const(self, name: str, value:int) -> bool:
         if name.isdigit():
             return False
-        
+
         if not (name in self._consts):
             self._consts[name] = value
 
@@ -173,7 +196,7 @@ class SubsystemBase:
     def add_enum(self, name: str) -> bool:
         if name.isdigit():
             return False
-        
+
         if not (name in self._enums):
             self._enums.append(name)
 
@@ -185,7 +208,7 @@ class SubsystemBase:
             raise Exception(f"cant add var to fixed area of {self._name}")
         if name.isdigit():
             return False
-        
+
         if not (name in self._vars):
             self._vars.append(name)
 

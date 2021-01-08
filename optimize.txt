@@ -14,14 +14,14 @@ while b
     ifelse b2 e
         dec b
     else b2 e
-        ! copy c | eq_char + <- b2
-        ! swap b3 | copy c | eq_char - | or b3 <- b2
-        ! swap b3 | copy c | eq_char > | or b3 <- b2
-        ! swap b3 | copy c | eq_char < | or b3 <- b2
-        ! swap b3 | copy c | eq_char [ | or b3 <- b2
-        ! swap b3 | copy c | eq_char ] | or b3 <- b2
-        ! swap b3 | copy c | eq_char , | or b3 <- b2
-        ! swap b3 | copy c | eq_char . | or b3 <- b2
+        ! copy c | eq '+ <- b2
+        ! swap b3 | copy c | eq '- | or b3 <- b2
+        ! swap b3 | copy c | eq '> | or b3 <- b2
+        ! swap b3 | copy c | eq '< | or b3 <- b2
+        ! swap b3 | copy c | eq '[ | or b3 <- b2
+        ! swap b3 | copy c | eq '] | or b3 <- b2
+        ! swap b3 | copy c | eq ', | or b3 <- b2
+        ! swap b3 | copy c | eq '. | or b3 <- b2
         if b2
             src2:@push c
         endif b2
@@ -41,19 +41,19 @@ endwhile b
     if b2
         ! src:@pop | src:@copypush <- c2
 
-        ! copy c | eq_char + <- b2
-        ! swap b3 | copy c2 | eq_char - | and b3 <- b2
+        ! copy c | eq '+ <- b2
+        ! swap b3 | copy c2 | eq '- | and b3 <- b2
 
-        ! copy c | eq_char - <- b3
-        ! swap b4 | copy c2 | eq_char + | and b4 <- b3
+        ! copy c | eq '- <- b3
+        ! swap b4 | copy c2 | eq '+ | and b4 <- b3
         or b3 b2
 
-        ! copy c | eq_char > <- b3
-        ! swap b4 | copy c2 | eq_char < | and b4 <- b3
+        ! copy c | eq '> <- b3
+        ! swap b4 | copy c2 | eq '< | and b4 <- b3
         or b3 b2
 
-        ! copy c | eq_char < <- b3
-        ! swap b4 | copy c2 | eq_char > | and b4 <- b3
+        ! copy c | eq '< <- b3
+        ! swap b4 | copy c2 | eq '> | and b4 <- b3
         or b3 b2
 
         if b2
