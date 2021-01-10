@@ -16,7 +16,7 @@ class Function:
         self.params = params
         self.expr = expr
 
-    def is_pass(self):
+    def is_pass(self) -> bool:
         """True if function returns arg0 and does nothing."""
         xs = self.expr.get_list()
 
@@ -75,6 +75,7 @@ class Expr:
         self.opr = opr
         self.args = args
         self.value = value
+        self.dependency = None
 
     def __str__(self) -> str:
         if self.opr in ["+", "-", "*", "/", ",", ";", "="]:
@@ -85,20 +86,19 @@ class Expr:
             return f"{self.opr}:{self.value}"
 
     def get_list(self) -> List[Expr]:
+        self.flatten_args()
+        self.flatten_assignments()
+
         if self.opr in ["[", "{"]:
             return self.args[0].get_list()
         elif self.opr in [",", ";"]:
             r = []
-            p = self
 
-            while p.opr == self.opr:
-                if p.args[0].opr != "<NIL>":
-                    r.append(p.args[0])
-
-                p = p.args[1]
-
-            if p.opr != "<NIL>":
-                r.append(p)
+            for arg in self.args:
+                if arg.opr == self.opr:
+                    r.extend(arg.get_list())
+                elif arg.opr != "<NIL>":
+                    r.append(arg)
 
             return r
         elif self.opr == "<NIL>":
@@ -117,7 +117,7 @@ class Expr:
         return "<ERROR>"
 
     @classmethod
-    def get_names_in_vardecl(self, expr):
+    def get_names_in_vardecl(self, expr: Union[Expr, List[Expr]]) -> List[str]:
         names = expr if type(expr) == list else expr.get_list()
         names = list(map(Expr.get_name_in_vardecl, names))
 
@@ -133,14 +133,307 @@ class Expr:
 
         return None
 
-    def compile(self, stack_size=DEFAULT_STACK_SIZE, ptr=0, out=sys.stdout):
+    def has_any_io(self) -> bool:
+        b, vs, vsg, any_io = self.find_dependency()
+
+        return any_io
+    def forget_dependency(self):
+        self.dependency = None
+
+    def find_dependency(self, forget_old=False) -> Tuple[bool, List[str], List[str], bool]:
+        """returns (\n
+           // has any dependency such as sideefect\n
+           result,\n
+           // function call can ignore them if they are auto\n
+           concerned_vars,\n
+           // expressions can not determin that is var local or global? then expressions treats vars as local\n
+           // determined by functions are here
+           concerned_global_vars,\n
+           // True if any I/O or asm exist
+           any_io
+           )
+        """
+        if forget_old:
+            self.forget_dependency()
+
+        if self.dependency != None:
+            pass
+        if self.opr == "<BUILTIN>":
+            self.dependency = (True, [], [], False)
+        elif self.opr == "__c2bf_input":
+            self.dependency = (True, [], [], True)
+        elif self.opr == "__c2bf_print":
+            self.dependency = (True, [], [], True)
+        elif self.opr in ["<NUM>", "<STR>", "<NIL>"]:
+            self.dependency = (False, [], [], False)
+        elif self.opr == "<ID>":
+            self.dependency = (True, [self.value], [], False)
+        else:
+            deps0 = [arg.find_dependency() for arg in self.args]
+            deps = zip(self.args, deps0)
+
+            local_vars = []
+            any_dep = False
+            vs = []
+            vsg = []
+            any_io = False
+            for arg, (b, vs2, vsg2, any_io2) in deps:
+                if arg.opr == "var":
+                    local_vars.extend(Expr.get_names_in_vardecl(arg))
+
+                if b:
+                    any_dep = True
+                    vs.extend(map(vs2.remove, local_vars))
+                    vsg.extend(vsg2)
+
+                if any_io2:
+                    any_io = True
+
+            if self.opr == "call":
+                f = get_function(self.value)
+
+                b, vs2, vsg2, any_io2 = f.expr.find_dependency()
+
+                vsg.extend(vsg2)
+                vsg.extend(list(set(vs2) - set(f.params)))
+
+                any_io = any_io or any_io2
+
+            any_dep = any_dep or any_io
+
+            self.dependency = (any_dep, list(set(vs)), list(set(vsg)), any_io)
+
+        return self.dependency
+
+    def flatten_args(self):
+        for arg in self.args:
+            arg.flatten_args()
+
+        if self.opr in ["+", "*", ";", ","]:
+            new_args: List[Expr] = []
+
+            for arg in self.args:
+                if arg.opr == self.opr:
+                    new_args.extend(arg.args)
+                else:
+                    new_args.append(arg)
+
+            self.args = new_args
+
+    def flatten_assignments(self):
+        """splits tuple-to-tuple assignment into non-tuple assignments"""
+
+        for arg in self.args:
+            arg.flatten_assignments()
+
+        if not (self.opr in ["=", "+=", "-=", "*=", "/=", "%="]):
+            return
+
+        left = self.args[0].get_list()
+        right = self.args[1].get_list()
+
+        if len(left) == 1 or len(right) == 1:
+            return
+
+        new_args: List[Expr] = []
+
+        for i in range(len(left)):
+            lval = left[i]
+            rval = right[i]
+
+            new_args.append(Expr(self.opr, [lval, rval]))
+
+        self.opr = ";"
+        self.args = new_args
+        self.forget_dependency()
+        self.find_dependency(forget_old=True)
+
+    def calc_consts(self) -> Expr:
+        self.flatten_args()
+        self.flatten_assignments()
+
+        self.args = [arg.calc_consts() for arg in self.args]
+
+        self.flatten_args()
+
+        b, vs, vsg, any_io = self.find_dependency()
+
+        if self.opr == "call":
+            f = get_function(self.value)
+            f.expr = f.expr.calc_consts()
+
+        if self.opr == "if":
+            cond = self.args[0]
+
+            if cond.opr == "<NUM>":
+                if cond.value == 0:
+                    if len(self.args) == 3:
+                        return self.args[2]
+                    else:
+                        return Expr("<NIL>", [])
+                else:
+                    return self.args[1]
+
+        if self.opr == "=" and len(self.args) == 2:
+            lvalue = self.args[0].get_list()
+            rvalue = self.args[1].get_list()
+
+            if len(lvalue) == 1 and len(rvalue) == 1:
+                lvalue = lvalue[0]
+                rvalue = rvalue[0]
+
+                if lvalue.opr == "<ID>" and rvalue.opr == "<ID>" and lvalue.value == rvalue.value:
+                    return Expr("<NIL>", [])
+
+        if self.opr == ";":
+            new_args: List[Expr] = []
+            last_lvalue = None
+
+            for arg in self.args:
+                if arg.opr == "=" and len(arg.args) == 2 and arg.args[0].opr == "<ID>":
+                    lvalue = arg.args[0].value
+                    rvalue = arg.args[1]
+
+                    b, vs, vsg, any_io = rvalue.find_dependency()
+
+                    if (lvalue in vs) or any_io:
+                        pass
+                    elif lvalue == last_lvalue:
+                        old_assignment = new_args[-1]
+
+                        if not old_assignment.args[1].has_any_io():
+                            new_args.pop()
+
+                    last_lvalue = lvalue
+                else:
+                    last_lvalue = None
+
+                    if arg.opr == "<NIL>":
+                        continue
+
+                new_args.append(arg)
+
+            self.args = new_args
+
+        if self.opr in ["+", "*"]:
+            s = 0 if self.opr == "+" else 1
+            new_args: List[Expr] = []
+
+            for arg in self.args:
+                if arg.opr == "<NUM>":
+                    if self.opr == "+":
+                        s += arg.value
+                    else:
+                        s *= arg.value
+                else:
+                    new_args.append(arg)
+
+            self.args = new_args
+
+            if len(self.args) == 0:
+                return Expr("<NUM>", [], s)
+            elif len(self.args) == 1:
+                if (self.opr == "+" and s == 0
+                        or self.opr == "*" and s == 1):
+                    return new_args[0]
+                elif self.opr == "*" and s == 0:
+                    b, vs, vsg, any_io = self.args[0].find_dependency()
+
+                    if not b:
+                        return Expr("<NUM>", [], s)
+
+            self.args.append(Expr("<NUM>", [], s))
+
+        return self
+
+    def has_any_io(self) -> bool:
+        if self.opr == "call":
+            f = get_function(self.value)
+            b, vs, vsg, any_io = f.expr.find_dependency()
+
+            if any_io:
+                return True
+
+        return False
+
+    def uses_outer_vars(self) -> bool:
+        b, vs, vsg, any_io = self.find_dependency()
+
+        return b
+
+    def compile(self, stack_size=DEFAULT_STACK_SIZE, ptr=0, out=sys.stdout, inline=True):
         if self.opr == "{":
             out.write("{\n")
 
             xs = self.args[0].get_list()
 
-            for x in xs:
-                x.compile(stack_size, ptr, out)
+            if inline:
+                i = 0
+                while i < len(xs):
+                    x = xs[i]
+
+                    # try to generate callings that share function code (for large inline functions)
+                    # ex: (f is inline and does not use x, y, z, n, m)
+                    #   from:
+                    #     f(x); f(y); f(z);
+                    #   to:
+                    #     { int a0 = x, a1 = y, a2 = z, na = 3;
+                    #       while (na) {
+                    #         f(a0);
+                    #         [a0, a1] = [a1, a2];
+                    #         na -= 1;
+                    #       }
+                    #     }
+                    #   from:
+                    #     n = f(x); m = f(y) + f(z);
+                    #   to:
+                    #     { int a0 = x, a1 = y, a2 = z, na = 3;
+                    #       while (na) {
+                    #         a0 = f(a0);
+                    #         [a0, a1, a2] = [a1, a2, a0];
+                    #         na -= 1;
+                    #       }
+                    #       x = a0; m = a1 + a2;
+                    #     }
+                    if x.opr == "call" and len(x.args) == 1 and x.args[0].opr == "<NUM>":
+                        j = i + 1
+                        while j < len(xs):
+                            x = xs[j]
+                            if x.opr != "call" or len(x.args) != 1 or x.args[0].opr != "<NUM>":
+                                break
+
+                            j += 1
+
+                        n = j - i
+
+                        if n > 1:
+                            # calc args
+                            for m in range(n):
+                                xs[i + m].args[0].compile(stack_size, ptr + m, out, inline)
+
+                            out.write(f"<stk{ptr + n}>" + "+" * n + "[-\n")
+
+                            expr = Expr("call", [Expr("<ID>", [], f"stk{ptr}")], x.value)
+                            expr.compile(stack_size, ptr + n + 1, out, inline)
+
+                            # shift
+                            out.write(f"<stk{ptr}>[-]\n")
+                            for m in range(n - 1):
+                                out.write(f"<stk{ptr + m + 1}>[- <stk{ptr + m}>+ ]\n")
+                            out.write(f"<stk{ptr + n - 1}>[-]\n")
+
+                            out.write("]\n")
+
+                            i += n
+
+                            continue
+
+                    x.compile(stack_size, ptr, out, inline)
+
+                    i += 1
+            else:
+                for x in xs:
+                    x.compile(stack_size, ptr, out, inline)
 
             out.write("}\n")
 
@@ -148,37 +441,37 @@ class Expr:
 
         if self.opr in [",", ";"]:
             for arg in self.args:
-                arg.compile(stack_size, ptr, out)
+                arg.compile(stack_size, ptr, out, inline)
 
             return
 
         if self.opr == "if":
             if len(self.args) == 3:
-                self.args[0].compile(stack_size, ptr + 2, out)
+                self.args[0].compile(stack_size, ptr + 2, out, inline)
 
                 out.write(f"<stk{ptr + 1}>+\n")
                 out.write(f"<stk{ptr + 2}>[[-] <stk{ptr + 1}>-\n")
 
-                self.args[1].compile(stack_size, ptr + 2, out)
+                self.args[1].compile(stack_size, ptr + 2, out, inline)
                 out.write(f"<stk{ptr + 2}>[- <stk{ptr}>+ ]\n")
 
                 out.write("]\n")
                 out.write(f"<stk{ptr + 1}>[-\n")
 
-                self.args[2].compile(stack_size, ptr + 2, out)
+                self.args[2].compile(stack_size, ptr + 2, out, inline)
                 out.write(f"<stk{ptr + 2}>[- <stk{ptr}>+ ]\n")
 
                 out.write("]\n")
             else:
                 out.write(f"<stk{ptr}> [-]\n")
-                self.args[0].compile(stack_size, ptr, out)
+                self.args[0].compile(stack_size, ptr, out, inline)
 
                 if len(self.args) == 1:
                     out.write(f"<stk{ptr}> [-]\n")
                 elif len(self.args) == 2:
                     out.write(f"<stk{ptr}> [[-]\n")
 
-                    self.args[1].compile(stack_size, ptr + 1, out)
+                    self.args[1].compile(stack_size, ptr + 1, out, inline)
 
                     out.write("]\n")
 
@@ -188,15 +481,15 @@ class Expr:
 
         if self.opr == "while":
             out.write(f"<stk{ptr + 1}> [-]\n")
-            self.args[0].compile(stack_size, ptr + 1, out)
+            self.args[0].compile(stack_size, ptr + 1, out, inline)
             out.write(f"<stk{ptr + 1}> [\n")
 
             if len(self.args) > 1:
-                self.args[1].compile(stack_size, ptr + 1, out)
+                self.args[1].compile(stack_size, ptr + 1, out, inline)
 
             out.write(f"<stk{ptr + 1}> [-]\n")
 
-            self.args[0].compile(stack_size, ptr + 1, out)
+            self.args[0].compile(stack_size, ptr + 1, out, inline)
 
             out.write("]\n")
 
@@ -206,8 +499,8 @@ class Expr:
             if self.opr == "==":
                 out.write(f"<stk{ptr}>+\n")
 
-            self.args[0].compile(stack_size, ptr + 1, out)
-            self.args[1].compile(stack_size, ptr + 2, out)
+            self.args[0].compile(stack_size, ptr + 1, out, inline)
+            self.args[1].compile(stack_size, ptr + 2, out, inline)
 
             out.write(f"<stk{ptr + 2}>[- <stk{ptr + 1}>- ]\n")
 
@@ -220,11 +513,11 @@ class Expr:
 
         if self.opr in [">", "<", ">=", "<="]:
             if self.opr.startswith(">"):
-                self.args[0].compile(stack_size, ptr + 1, out)
-                self.args[1].compile(stack_size, ptr + 2, out)
+                self.args[0].compile(stack_size, ptr + 1, out, inline)
+                self.args[1].compile(stack_size, ptr + 2, out, inline)
             else:
-                self.args[1].compile(stack_size, ptr + 1, out)
-                self.args[0].compile(stack_size, ptr + 2, out)
+                self.args[1].compile(stack_size, ptr + 1, out, inline)
+                self.args[0].compile(stack_size, ptr + 2, out, inline)
 
             if self.opr.endswith("="):
                 out.write(f"<stk{ptr + 2}>[-\n")
@@ -254,7 +547,7 @@ class Expr:
                 src = srcs[i]
 
                 out.write(f"<stk{ptr + i}>[-]\n")
-                src.compile(stack_size, ptr + i, out)
+                src.compile(stack_size, ptr + i, out, inline)
 
             for i in range(len(dsts)):
                 dst = dsts[i]
@@ -271,16 +564,16 @@ class Expr:
             return
 
         if self.opr in ["+", "-"]:
-            self.args[0].compile(stack_size, ptr, out)
-            self.args[1].compile(stack_size, ptr + 1, out)
+            self.args[0].compile(stack_size, ptr, out, inline)
+            self.args[1].compile(stack_size, ptr + 1, out, inline)
 
             out.write(f"<stk{ptr + 1}>[- <stk{ptr}>{self.opr} ]\n")
 
             return
 
         if self.opr == "*":
-            self.args[0].compile(stack_size, ptr + 2, out)
-            self.args[1].compile(stack_size, ptr + 3, out)
+            self.args[0].compile(stack_size, ptr + 2, out, inline)
+            self.args[1].compile(stack_size, ptr + 3, out, inline)
 
             out.write(f"<stk{ptr + 3}>[-\n")
             out.write(f"  <stk{ptr + 2}>[- <stk{ptr + 1}>+ <stk{ptr}>+ ]\n")
@@ -292,7 +585,7 @@ class Expr:
         if self.opr == "!":
             out.write(f"<stk{ptr}>+\n")
 
-            self.args[0].compile(stack_size, ptr + 1, out)
+            self.args[0].compile(stack_size, ptr + 1, out, inline)
 
             out.write(f"<stk{ptr + 1}>[[-] <stk{ptr}>- ]\n")
 
@@ -301,9 +594,14 @@ class Expr:
         if self.opr == "~":
             out.write(f"<stk{ptr}>-\n")
 
-            self.args[0].compile(stack_size, ptr + 1, out)
+            self.args[0].compile(stack_size, ptr + 1, out, inline)
 
             out.write(f"<stk{ptr + 1}>[- <stk{ptr}>- ]\n")
+
+            return
+
+        if self.opr == "__c2bf_input":
+            out.write(f"<stk{ptr}>,\n")
 
             return
 
@@ -312,7 +610,7 @@ class Expr:
 
             for expr in exprs:
                 out.write(f"<stk{ptr}>[-]\n")
-                expr.compile(stack_size, ptr, out)
+                expr.compile(stack_size, ptr, out, inline)
                 out.write(f"<stk{ptr}>.\n")
 
             return
@@ -334,10 +632,10 @@ class Expr:
                 if src_expr.opr == "<ID>":
                     out.write(f"<stk{src_expr.value}>[-\n")
                 else:
-                    src_expr.compile(stack_size, ptr, out)
+                    src_expr.compile(stack_size, ptr, out, inline)
                     out.write(f"<stk{ptr}>[-\n")
             else:
-                src_expr.compile(stack_size, ptr + 1, out)
+                src_expr.compile(stack_size, ptr + 1, out, inline)
                 out.write(f"<stk{ptr + 1}>[-\n")
                 out.write(f"  <stk{ptr}>+\n")
 
@@ -348,7 +646,7 @@ class Expr:
 
             return
 
-        if self.opr in ["int", "char"]:
+        if self.opr == "var":
             vs = self.args[0].get_list()
             names = list(map(Expr.get_name_in_vardecl, vs))
             exprs = list(map(Expr.get_expr_in_vardecl, vs))
@@ -363,11 +661,11 @@ class Expr:
                     continue
 
                 out.write(f"<stk{ptr}>[-]\n")
-                expr.compile(stack_size, ptr, out)
+                expr.compile(stack_size, ptr, out, inline)
 
                 out.write(f"<stk{ptr}>[- <{name}>+ ]\n")
 
-            # currently "int"  returns just one variable
+            # currently "var"  returns just one variable
             out.write(f"<stk{ptr}>[-]\n")
             out.write(f"<{names[0]}>[- <stk{ptr}>+ <stk{ptr + 1}>+ ]\n")
             out.write(f"<stk{ptr + 1}>[- <{names[0]}>+ ]\n")
@@ -382,7 +680,7 @@ class Expr:
 
             # simply replaces with arg
             if f.is_pass():
-                args[0].compile(stack_size, ptr, out)
+                args[0].compile(stack_size, ptr, out, inline)
 
                 return
 
@@ -393,13 +691,13 @@ class Expr:
                 param = params[i]
 
                 out.write(f"<stk{ptr}>[-]\n")
-                arg.compile(stack_size, ptr, out)
+                arg.compile(stack_size, ptr, out, inline)
 
                 out.write(f"({param})\n")
                 out.write(f"<stk{ptr}>[- <{param}>+ ]\n")
 
             expr = f.expr
-            expr.compile(stack_size, ptr, out)
+            expr.compile(stack_size, ptr, out, inline)
 
             for i in range(len(args)):
                 param = params[i]
@@ -511,10 +809,13 @@ def lex(src: str) -> List[str]:
 
         i = j
 
-    # preprocess for internal language that requires ";" after "}".
+    # preprocess for internal language that requires ";" after "}" and does not accept ";" before "else".
     i = 1
     while i < len(tkns) - 1:
-        if tkns[i].startswith("{"):
+        # enables "if (abc) def; else ghi;"
+        if tkns[i] == "else" and tkns[i - 1] == ";":
+            tkns = tkns[:i - 1] + tkns[i:]
+        elif tkns[i].startswith("{"):
             if tkns[i - 1] == "do":
                 pass
             elif tkns[i + 1] == "else":
@@ -544,7 +845,9 @@ def parse(src):
     if len(tkns) == 1:
         tkn = tkns[0].strip()
 
-        if tkn.startswith("("):
+        if tkn.startswith("__c2bf_"):
+            return Expr(tkn, [])
+        elif tkn.startswith("("):
             tkn = tkn[1:]
 
             if tkn.endswith(")"):
@@ -611,13 +914,17 @@ def parse(src):
             return Expr(tkns[0], [parse(tkns[1]), parse(tkns[2:])])
 
     if tkns[0] in ["int", "char"]:
-        return Expr(tkns[0], [parse(tkns[1:])])
+        return Expr("var", [parse(tkns[1:])], tkns[0])
 
     if tkns[0] in [
-            "__c2bf_print",
+            # "return", "goto", "break", "continue",
+            "__c2bf_input", "__c2bf_print", "__c2bf_debug",
             "__c2bf_move", "__c2bf_moveadd", "__c2bf_movesub",
             "__c2bf_copy", "__c2bf_copyadd", "__c2bf_copysub"]:
         return Expr(tkns[0], [parse(tkns[1:])])
+
+    if iscsymf(tkns[0][0]) and len(tkns) > 2 and tkns[1] == ":":
+        return Expr(":", [parse(tkns[2:])], tkns[0])
 
     idx = get_tkn_index(tkns, ",", 0)
 
@@ -695,7 +1002,8 @@ def parse(src):
             arg = parse(tkns[1:])
             args = arg.get_list()
 
-            if (tkns[0] == "puts" and len(args) == 1 or tkns[0] == "fputs" and len(args) == 2) and args[0].opr == "<STR>":
+            if (tkns[0] == "puts" and len(args) == 1
+                        or tkns[0] == "fputs" and len(args) == 2)  and args[0].opr == "<STR>":
                 s = args[0].value
                 args = []
 
@@ -721,10 +1029,6 @@ def parse(src):
     return Expr("<ERROR>", [], "".join(tkns))
 
 
-define_function("__c2bf_debug", [],
-    Expr("<BUILTIN>", [], "'!'"))
-define_function("__c2bf_input", [],
-    Expr("<BUILTIN>", [], ","))
 
 
 def is_cpp(tkns):
@@ -886,39 +1190,8 @@ def load_cpped(filename: str, defined_names: Dict[str, str]={}, shared_vars=[]) 
 
     return src
 
-def is_shared_vars_declaration(tkns):
-    return (len(tkns) >= 2 and tkns[0] == "#pragma" and tkns[1] == "bf_shared"
-        or len(tkns) >= 3 and tkns[0] == "#" and tkns[1] == "pragma" and tkns[2] == "bf_shared")
-
-def shared_vars_from_declaration(tkns):
-    if not is_shared_vars_declaration(tkns):
-        return []
-    elif tkns[0] == "#":
-        return tkns[3:]
-    else:
-        return tkns[2:]
 
 
-def load(filename: str) -> Tuple[str, List[str]]:
-    src = ""
-    vs = []
-
-    with io.open(filename) as f:
-        src = f.read()
-
-    src2 = src.split("\n")
-    src2 = filter(len, map(str.strip, src2))
-    src = ""
-    while f.readable() and not f.closed:
-        line = f.readline()
-        tkns = list(filter(len, map(str.strip, line.split())))
-
-        if is_shared_vars_declaration(tkns):
-            vs = shared_vars_from_declaration(tkns)
-        else:
-            src += line
-
-    return (src, vs)
 
 class C2bf:
     def __init__(self, file_name: str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE) -> None:
@@ -940,13 +1213,17 @@ class C2bf:
 
         return "\n".join(src0)
 
-    def compile_to_bfa(self, startup="{main()}") -> Bfa:
+    def compile_to_bfa(self, startup="{main()}", optimization_level=0) -> Bfa:
         # startup
         src = self.src + startup
 
         x = parse(src)
         bfa_src_out = io.StringIO(newline="\n")
-        x.compile(self.stack_size, out=bfa_src_out)
+
+        if optimization_level == 1:
+            x = x.calc_consts()
+
+        x.compile(self.stack_size, out=bfa_src_out, inline=True)
 
         bfa_src = (" ".join([f"({v})" for v in self.shared_vars]) + "\n"
             + " ".join([f"(stk{i})" for i in range(self.stack_size)]) + "\n"
@@ -957,9 +1234,9 @@ class C2bf:
 
         return bfa
 
-    def compile_to_bf(self, startup="{main()}") -> Tuple[str, int]:
+    def compile_to_bf(self, startup="{main()}", optimization_level=0) -> Tuple[str, int]:
         """returns memory_size to run safe"""
-        bfa = self.compile_to_bfa(startup)
+        bfa = self.compile_to_bfa(startup, optimization_level=optimization_level)
 
         dst_out = io.StringIO()
         memory_size = bfa.compile(dst_out)
@@ -967,19 +1244,20 @@ class C2bf:
         return [dst_out.getvalue(), memory_size]
 
     @classmethod
-    def compile_file_to_bfa(self, file_name:str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE, startup="{main()}") -> Bfa:
+    def compile_file_to_bfa(self, file_name:str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE, startup="{main()}", optimization_level=0) -> Bfa:
         c = C2bf(file_name, defined_macros=defined_macros, shared_vars=shared_vars, stack_size=stack_size)
 
-        return c.compile_to_bfa(startup)
+        return c.compile_to_bfa(startup, optimization_level=optimization_level)
 
     @classmethod
-    def compile_file_to_bf(self, file_name:str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE, startup="{main()}") -> Tuple[str, int]:
+    def compile_file_to_bf(self, file_name:str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE, startup="{main()}", optimization_level=0) -> Tuple[str, int]:
         c = C2bf(file_name, defined_macros=defined_macros, shared_vars=shared_vars, stack_size=stack_size)
 
-        return c.compile_to_bf(startup)
+        return c.compile_to_bf(startup, optimization_level=optimization_level)
 
 
 def main(argv):
+    optimization_level = 0
     stack_size = DEFAULT_STACK_SIZE
     defined_macros = {}
     include_dirs = []
@@ -1004,6 +1282,11 @@ def main(argv):
                 opt_name = opt_name[:sep_idx]
 
         if opt_name == "":
+            continue
+
+        if opt_name.startswith("O"):
+            optimization_level = int(opt_name[1:])
+
             continue
 
         if opt_name.startswith("D"):
@@ -1036,6 +1319,7 @@ def main(argv):
 
     if len(file_names) == 0 or not file_names[0].endswith(".c"):
         print(f"python {argv[0]} [options] src")
+        print("  -Onum           optimization level")
         print("  -Dname[=value]  define macro")
         print("  -Idir           add include directory")
         print("  -E              preprocess only")
@@ -1045,26 +1329,33 @@ def main(argv):
 
         return 0
 
-    try:
+    # try:
+    if True:
         if preprocess_only:
             c2 = C2bf.preprocess_file(file_names[0], defined_macros=defined_macros)
 
             with io.open(file_names[0] + ".i", "w") as f:
                 f.write(c2)
         elif generates_bfa:
-            bfa = C2bf.compile_file_to_bfa(file_names[0], stack_size=stack_size)
+            bfa = C2bf.compile_file_to_bfa(file_names[0],
+                defined_macros=defined_macros,
+                stack_size=stack_size,
+                optimization_level=optimization_level)
 
             with io.open(file_names[0] + ".bfa", "w") as f:
                 f.write(bfa.src)
         else:
-            bf, memory_size = C2bf.compile_file_to_bf(file_names[0], defined_macros=defined_macros, stack_size=stack_size)
+            bf, memory_size = C2bf.compile_file_to_bf(file_names[0],
+                defined_macros=defined_macros,
+                stack_size=stack_size,
+                optimization_level=optimization_level)
 
             sys.stderr.write(f"this program uses {memory_size} cells.\n")
 
             with io.open(file_names[0] + ".bf", "w") as f:
                 f.write(bf)
-    except Exception as e:
-        sys.stdout.write(e)
+    # except Exception as e:
+    #     sys.stdout.write(str(e))
 
     return 0
 

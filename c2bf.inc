@@ -10,7 +10,7 @@
     #include <stdio.h>
 
     #define __c2bf_debug() fputs("debug dump at here\n", stderr)
-    #define __c2bf_input() (getchar() & 0xFF)
+    #define __c2bf_input (getchar() & 0xFF)
     #define __c2bf_print(arg) putchar(arg)
 #endif
 
@@ -18,12 +18,12 @@
 input_int() {
     int i = 0, c;
 
-    c = __c2bf_input();
+    c = __c2bf_input;
     while (c != 10) {
         i = i * 10;
         i += c - 48;
 
-        c = __c2bf_input();
+        c = __c2bf_input;
     }
 
     return(i);
