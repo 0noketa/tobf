@@ -8,16 +8,9 @@ print_fib(n) {
     while (n) {
         println_int(i);
 
-        #ifdef __C2BF_TUPLES__
-            // asignment with temporaly tuples
-            [i, j] = [i + j, i];
-        #else
-            {
-                int k = i;
-                i = i + j;
-                j = k;
-            }
-        #endif
+        int k = i;
+        i = i + j;
+        j = k;
 
         n -= 1;
     }

@@ -1,7 +1,7 @@
 from __future__ import annotations
 # C(simple subset) to Brainfuck compiler
 
-from typing import cast, Union, Tuple, List, Dict
+from typing import cast, Union, Tuple, List, Dict, Set
 import sys
 import io
 import re
@@ -15,6 +15,9 @@ class Function:
         self.name = name
         self.params = params
         self.expr = expr
+
+        if self.expr.has_any(opr="return"):
+            self.expr.move_branches_to_last(for_tail_jump=True)
 
     def is_pass(self) -> bool:
         """True if function returns arg0 and does nothing."""
@@ -77,17 +80,39 @@ class Expr:
         self.value = value
         self.dependency = None
 
-    def __str__(self) -> str:
-        if self.opr in ["+", "-", "*", "/", ",", ";", "="]:
-            return f"({self.args[0]} {self.opr} {self.args[1]})"
-        elif self.opr in ["[", "{"]:
-            return f"({self.opr} {self.args[0]})"
+    def __str__(self, dpt=0) -> str:
+        if self.opr == "<NIL>" or (self.opr in ["{", ";"] and len(self.args) == 0):
+            return ""
+        r = ""
+        if self.opr in ["+", "-", "*", "/", "%", "=", "+=", "-=", "*=", "/=", "%=", "<", ">", "<=", ">=", "&&", "||", "!", "~"]:
+            r += "(" + f" {self.opr} ".join([arg.__str__(dpt) for arg in self.args]) + ")"
+        elif self.opr == ";":
+            r += "".join(["  " * dpt + arg.__str__(dpt) + ";\n" for arg in self.args])
+        elif self.opr == "{":
+            r += "{" + "".join(["  " * dpt + arg.__str__(dpt) + "\n" for arg in self.args]) + "}"
+        elif self.opr == "[":
+            r += "[" + ",".join([arg.__str__(dpt) for arg in self.args]) + "]"
+        elif self.opr == ",":
+            r += "(" + ",".join([arg.__str__(dpt) for arg in self.args]) + ")"
+        elif self.opr == ":":
+            r += self.value + ":" + self.args[0].__str__(dpt)
+        elif self.opr == "?":
+            r += "(" + self.args[0].__str__(dpt) + " ? " + self.args[1].__str__(dpt) + " : " + self.args[1].__str__(dpt) + ")"
+        elif self.opr == "if":
+            r += "if (" + self.args[0].__str__(dpt) + ")\n" + self.args[1].__str__(dpt + 1)
+            if len(self.args) > 2:
+                r += "else\n" + self.args[2].__str__(dpt + 1)
+        elif self.opr == "while":
+            r += "while (" + self.args[0].__str__(dpt) + ") " + self.args[1].__str__(dpt)
+        elif self.opr == "call":
+            r += self.value + self.args[0].__str__(dpt)
         else:
-            return f"{self.opr}:{self.value}"
+            r += f"{self.opr}:{self.value}"
+        
+        return r
 
     def get_list(self) -> List[Expr]:
         self.flatten_args()
-        self.flatten_assignments()
 
         if self.opr in ["[", "{"]:
             return self.args[0].get_list()
@@ -137,6 +162,118 @@ class Expr:
         b, vs, vsg, any_io = self.find_dependency()
 
         return any_io
+
+    def has_any(self, opr: str = None, any_opr: Set[str] = None, expr: Expr = None, path=[]) -> bool:
+        if self in path:
+            raise Exception(f"{self}")
+
+        for arg in self.args:
+            if arg.has_any(opr=opr, expr=expr, path=path+[self]):
+                return True
+        
+        if any_opr != None:
+            return self.opr in any_opr
+        if opr != None:
+            return self.opr == opr
+        if expr != None:
+            return self == expr
+        
+        return False
+    def has_only_tail_return(self) -> bool:
+        if self.opr == "return":
+            return True
+
+        if len(self.args) == 0:
+            return False
+
+        if self.opr == "{" and len(self.args) == 1:
+            return self.args[0].has_only_tail_return()
+
+        if self.opr == ";":
+            if self in self.args:
+                raise Exception(f"(self)")
+
+            for arg in self.args:
+                if arg.has_only_tail_return():
+                    return True
+
+            return False
+
+        if self.opr in ["if", "while"]:
+            if self.args[0].has_any(opr="return"):
+                raise Exception(f"condition contains any return")
+
+        if self.opr == "while":
+            for arg in self.args[1:]:
+                if arg.has_any(opr="return"):
+                    raise Exception(f"""[return] in [while] is not implemented""")
+
+        if self.opr == "if":
+            for arg in self.args[1:]:
+                if not arg.has_only_tail_return():
+                    return False
+            
+            return True
+
+        return False
+
+    @classmethod
+    def copy_exprs(self, xs: List[Expr]) -> List[Expr]:
+        r = []
+
+        for x in xs:
+            r.append(Expr(x.opr, Expr.copy_exprs(x.args), x.value))
+
+        return r
+
+    def move_branches_to_last(self, for_tail_jump=False):
+        """for_tail_jump: moves only branches that contains any of [return], [break], [continue], [goto]\n
+           deformates\n
+           from:\n
+           { if (a) { b; } else { c; } d; }\n
+           to:\n
+           { if (a) { b; d; } else { c; d; } }\n
+           [this deformation] + [ignoring code after [return]] enables interruptive [return] without call/jump simulation.
+        """
+
+        if len(self.args) != len(set(self.args)):
+            raise Exception(f"{self}")
+
+        for arg in self.args:
+            arg.move_branches_to_last(for_tail_jump)
+
+        if self.opr == ";":
+            for i in range(len(self.args)):
+                arg = self.args[i]
+
+                if arg.opr == "if":
+                    branch = arg
+
+                    if for_tail_jump:
+                        any_jump = False
+
+                        for arg in branch.args[1:]:
+                            if arg.has_any(opr="return"):
+                                any_jump = True
+
+                                break
+
+                        if not any_jump:
+                            break
+
+                    if len(branch.args) == 2:
+                        branch.args.append(Expr(";", []))
+
+                    for j in range(1, 3):
+                        # for avoiding name confliction
+                        branch_arg = Expr("{", [Expr(";", [branch.args[j]])])
+                        branch.args[j] = Expr(";", [branch_arg] + Expr.copy_exprs(self.args[i + 1:]))
+                        branch.args[j].move_branches_to_last(for_tail_jump)
+
+                    self.args = self.args[:i + 1]
+                    
+                    break
+
     def forget_dependency(self):
         self.dependency = None
 
@@ -160,10 +297,16 @@ class Expr:
             pass
         if self.opr == "<BUILTIN>":
             self.dependency = (True, [], [], False)
-        elif self.opr == "__c2bf_input":
-            self.dependency = (True, [], [], True)
-        elif self.opr == "__c2bf_print":
-            self.dependency = (True, [], [], True)
+        elif self.opr in ["__c2bf_input", "__c2bf_print"]:
+            vs = []
+            vsg = []
+            for arg in self.args:
+                b, vs2, vsg2, any_io = arg.find_dependency()
+                if b:
+                    vs.extend(vs2)
+                    vsg.extend(vsg2)
+
+            self.dependency = (True, vs, vsg, True)
         elif self.opr in ["<NUM>", "<STR>", "<NIL>"]:
             self.dependency = (False, [], [], False)
         elif self.opr == "<ID>":
@@ -205,9 +348,39 @@ class Expr:
 
         return self.dependency
 
+    def is_string(self, template=[]) -> bool:
+        if len(template) == 0:
+            return True
+        
+        if self.opr != template[0]:
+            return False
+        
+        if len(template) == 1:
+            return True
+
+        if len(self.args) != 1 and len(template) > 1:
+            return False
+
+        return self.args[0].is_string(template[1:])
+
     def flatten_args(self):
         for arg in self.args:
             arg.flatten_args()
+
+        if self.opr == ";":
+            self.args = [arg for arg in self.args if arg.opr != "<NIL>"]
+            while True:
+                if self.is_string([";", ";"]):
+                    self.args = self.args[0].args
+                    continue
+                break
+
+        if self.opr == "{":
+            while True:
+                if self.is_string(["{", "{"]):
+                    self.args = self.args[0].args
+                    continue
+                break
 
         if self.opr in ["+", "*", ";", ","]:
             new_args: List[Expr] = []
@@ -215,42 +388,23 @@ class Expr:
             for arg in self.args:
                 if arg.opr == self.opr:
                     new_args.extend(arg.args)
-                else:
+                elif arg.opr != "<NIL>":
                     new_args.append(arg)
 
             self.args = new_args
 
-    def flatten_assignments(self):
-        """splits tuple-to-tuple assignment into non-tuple assignments"""
+        if self.opr == ";":
+            new_args = []
 
-        for arg in self.args:
-            arg.flatten_assignments()
+            for arg in self.args:
+                new_args.append(arg)
+                if arg.has_only_tail_return():
+                    break
 
-        if not (self.opr in ["=", "+=", "-=", "*=", "/=", "%="]):
-            return
-
-        left = self.args[0].get_list()
-        right = self.args[1].get_list()
-
-        if len(left) == 1 or len(right) == 1:
-            return
-
-        new_args: List[Expr] = []
-
-        for i in range(len(left)):
-            lval = left[i]
-            rval = right[i]
-
-            new_args.append(Expr(self.opr, [lval, rval]))
-
-        self.opr = ";"
-        self.args = new_args
-        self.forget_dependency()
-        self.find_dependency(forget_old=True)
+                self.args = new_args
 
     def calc_consts(self) -> Expr:
         self.flatten_args()
-        self.flatten_assignments()
 
         self.args = [arg.calc_consts() for arg in self.args]
 
@@ -278,12 +432,16 @@ class Expr:
             lvalue = self.args[0].get_list()
             rvalue = self.args[1].get_list()
 
-            if len(lvalue) == 1 and len(rvalue) == 1:
+            if len(lvalue) == 1 and len(rvalue) == 1 and self.args[0].opr != "[" and self.args[1].opr != "[":
                 lvalue = lvalue[0]
                 rvalue = rvalue[0]
 
                 if lvalue.opr == "<ID>" and rvalue.opr == "<ID>" and lvalue.value == rvalue.value:
                     return Expr("<NIL>", [])
+            elif len(lvalue) == 1 and len(rvalue) > 0 and self.args[1].opr == ",":
+                return Expr("=", [self.args[0], rvalue[-1]])
+            else:
+                raise Exception(f"unknown format of assignment ({self.args[0].opr}/{len(lvalue)}) = ({self.args[1].opr}/{len(rvalue)})")
 
         if self.opr == ";":
             new_args: List[Expr] = []
@@ -361,79 +519,24 @@ class Expr:
 
         return b
 
-    def compile(self, stack_size=DEFAULT_STACK_SIZE, ptr=0, out=sys.stdout, inline=True):
+    def compile(self, stack_size=DEFAULT_STACK_SIZE, ptr=0, out=sys.stdout, inline=True, root: Expr = None):
+        self.flatten_args()
+
         if self.opr == "{":
+            if len(self.args) == 0:
+                return
+
             out.write("{\n")
 
             xs = self.args[0].get_list()
 
-            if inline:
-                i = 0
-                while i < len(xs):
-                    x = xs[i]
+            for i in range(len(xs)):
+                x = xs[i]
+            # for x in xs:
+                x.compile(stack_size, ptr, out, inline)
 
-                    # try to generate callings that share function code (for large inline functions)
-                    # ex: (f is inline and does not use x, y, z, n, m)
-                    #   from:
-                    #     f(x); f(y); f(z);
-                    #   to:
-                    #     { int a0 = x, a1 = y, a2 = z, na = 3;
-                    #       while (na) {
-                    #         f(a0);
-                    #         [a0, a1] = [a1, a2];
-                    #         na -= 1;
-                    #       }
-                    #     }
-                    #   from:
-                    #     n = f(x); m = f(y) + f(z);
-                    #   to:
-                    #     { int a0 = x, a1 = y, a2 = z, na = 3;
-                    #       while (na) {
-                    #         a0 = f(a0);
-                    #         [a0, a1, a2] = [a1, a2, a0];
-                    #         na -= 1;
-                    #       }
-                    #       x = a0; m = a1 + a2;
-                    #     }
-                    if x.opr == "call" and len(x.args) == 1 and x.args[0].opr == "<NUM>":
-                        j = i + 1
-                        while j < len(xs):
-                            x = xs[j]
-                            if x.opr != "call" or len(x.args) != 1 or x.args[0].opr != "<NUM>":
-                                break
-
-                            j += 1
-
-                        n = j - i
-
-                        if n > 1:
-                            # calc args
-                            for m in range(n):
-                                xs[i + m].args[0].compile(stack_size, ptr + m, out, inline)
-
-                            out.write(f"<stk{ptr + n}>" + "+" * n + "[-\n")
-
-                            expr = Expr("call", [Expr("<ID>", [], f"stk{ptr}")], x.value)
-                            expr.compile(stack_size, ptr + n + 1, out, inline)
-
-                            # shift
-                            out.write(f"<stk{ptr}>[-]\n")
-                            for m in range(n - 1):
-                                out.write(f"<stk{ptr + m + 1}>[- <stk{ptr + m}>+ ]\n")
-                            out.write(f"<stk{ptr + n - 1}>[-]\n")
-
-                            out.write("]\n")
-
-                            i += n
-
-                            continue
-
-                    x.compile(stack_size, ptr, out, inline)
-
-                    i += 1
-            else:
-                for x in xs:
-                    x.compile(stack_size, ptr, out, inline)
+                if x.has_any(opr="return") and x.has_only_tail_return():
+                    break
 
             out.write("}\n")
 
@@ -443,7 +546,13 @@ class Expr:
             for arg in self.args:
                 arg.compile(stack_size, ptr, out, inline)
 
+                if arg.has_any(opr="return") and arg.has_only_tail_return():
+                    break
+
             return
+
+        if self.opr in ["if", "while"] and self.args[0].has_any(opr="return"):
+            raise Exception(f"[return] in condition")
 
         if self.opr == "if":
             if len(self.args) == 3:
@@ -484,6 +593,9 @@ class Expr:
             self.args[0].compile(stack_size, ptr + 1, out, inline)
             out.write(f"<stk{ptr + 1}> [\n")
 
+            if self.args[1].has_any(opr="return"):
+                raise Exception(f"[return] in [while] is not implemented")
+
             if len(self.args) > 1:
                 self.args[1].compile(stack_size, ptr + 1, out, inline)
 
@@ -492,6 +604,17 @@ class Expr:
             self.args[0].compile(stack_size, ptr + 1, out, inline)
 
             out.write("]\n")
+
+            return
+
+        if self.opr == ":":
+            self.args[0].compile(stack_size, ptr, out, inline)
+
+            return
+
+        if self.opr == "return":
+            for arg in self.args:
+                arg.compile(stack_size, ptr, out, inline)
 
             return
 
@@ -601,7 +724,16 @@ class Expr:
             return
 
         if self.opr == "__c2bf_input":
-            out.write(f"<stk{ptr}>,\n")
+            if len(self.args) == 0:
+                out.write(f"<stk{ptr}>,\n")
+
+                return
+
+            for arg in self.args:
+                if arg.opr != "<ID>":
+                    raise Exception(f"not implemented type of lvalue")
+
+                out.write(f"<{arg.value}>,")
 
             return
 
@@ -697,7 +829,7 @@ class Expr:
                 out.write(f"<stk{ptr}>[- <{param}>+ ]\n")
 
             expr = f.expr
-            expr.compile(stack_size, ptr, out, inline)
+            expr.compile(stack_size, ptr, out, inline, root=expr)
 
             for i in range(len(args)):
                 param = params[i]
@@ -847,6 +979,8 @@ def parse(src):
 
         if tkn.startswith("__c2bf_"):
             return Expr(tkn, [])
+        elif tkn == "return":
+            return Expr("return", [])
         elif tkn.startswith("("):
             tkn = tkn[1:]
 
@@ -902,6 +1036,9 @@ def parse(src):
         else:
             return Expr(";", [left, right])
 
+    if iscsymf(tkns[0][0]) and tkns[1] == ":":
+        return Expr(":", [parse(tkns[1:])], tkns[0])
+        
     if tkns[0] in ["if", "while"] and len(tkns) > 1 and tkns[1].strip().startswith("("):
         if len(tkns) > 2:
             else_idx = get_tkn_index(tkns, "else", 2)
@@ -917,7 +1054,7 @@ def parse(src):
         return Expr("var", [parse(tkns[1:])], tkns[0])
 
     if tkns[0] in [
-            # "return", "goto", "break", "continue",
+            "return", "goto", "break", "continue",
             "__c2bf_input", "__c2bf_print", "__c2bf_debug",
             "__c2bf_move", "__c2bf_moveadd", "__c2bf_movesub",
             "__c2bf_copy", "__c2bf_copyadd", "__c2bf_copysub"]:
@@ -1204,9 +1341,7 @@ class C2bf:
     @classmethod
     def preprocess_file(self, file_name, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = {}) -> str:
         defined_macros.update({
-            "__C2BF__": "",
-            "__C2BF_TUPLES__": "",
-            "__C2BF_IMPLICIT_RESULTS__": ""
+            "__C2BF__": ""
         })
 
         src0 = load_cpped(file_name, defined_names=defined_macros, shared_vars=shared_vars)
@@ -1223,7 +1358,7 @@ class C2bf:
         if optimization_level == 1:
             x = x.calc_consts()
 
-        x.compile(self.stack_size, out=bfa_src_out, inline=True)
+        x.compile(self.stack_size, out=bfa_src_out, inline=True, root=x)
 
         bfa_src = (" ".join([f"({v})" for v in self.shared_vars]) + "\n"
             + " ".join([f"(stk{i})" for i in range(self.stack_size)]) + "\n"

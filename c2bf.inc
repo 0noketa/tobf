@@ -1,12 +1,7 @@
 #ifndef c2bf__included
 #define c2bf__included
 
-#ifdef __C2BF__
-    #ifdef __C2BF_IMPLICIT_RESULTS__
-        // do not use for "break"-like purpose
-        return(n) { n; }
-    #endif
-#else
+#ifndef __C2BF__
     #include <stdio.h>
 
     #define __c2bf_debug() fputs("debug dump at here\n", stderr)
@@ -26,7 +21,7 @@ input_int() {
         c = __c2bf_input;
     }
 
-    return(i);
+    return i;
 }
 
 print_int(n) {
