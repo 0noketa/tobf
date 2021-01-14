@@ -16,7 +16,7 @@ class Function:
         self.params = params
         self.expr = expr
 
-        if self.expr.has_any(opr="return"):
+        if self.expr.has_any(opr="return") or self.expr.has_any(opr="continue") or self.expr.has_any(opr="break"):
             self.expr.move_branches_to_last(for_tail_jump=True)
 
     def is_pass(self) -> bool:
@@ -111,6 +111,15 @@ class Expr:
         
         return r
 
+    @classmethod
+    def copy_exprs(self, xs: List[Expr]) -> List[Expr]:
+        r = []
+
+        for x in xs:
+            r.append(Expr(x.opr, Expr.copy_exprs(x.args), x.value))
+
+        return r
+
     def get_list(self) -> List[Expr]:
         self.flatten_args()
 
@@ -162,6 +171,72 @@ class Expr:
         b, vs, vsg, any_io = self.find_dependency()
 
         return any_io
+
+    def has_recursive_call(self, used: Set[str] = None) -> bool:
+        if used == None:
+            used = set()
+
+        for arg in self.args:
+            if arg.has_recursive_call(used):
+                return False
+
+        if self.opr == "call":
+            if self.value in used:
+                return False
+
+            f = get_function(self.value)
+            
+            return f.expr.has_recursive_call(used | set([self.value]))
+
+        return True
+
+    def has_explicit_result(self) -> bool:
+        if self.opr == "return" and len(self.args) > 0:
+            return True
+        for arg in self.args:
+            if arg.has_explicit_result():
+                return True
+
+        return False
+
+    def has_continue_or_break(self, tail_only=False) -> bool:
+        if self.opr in ["continue", "break"]:
+            return True
+        if self.opr in ["while", "for", "do"]:
+            return False
+
+        if tail_only and len(self.args):
+            for arg in self.args[:-1]:
+                if arg.has_continue_or_break():
+                    return False
+
+            if self.args[-1].has_continue_or_break(tail_only=True):
+                return True
+        else:
+            for arg in self.args:
+                if arg.has_continue_or_break():
+                    return True
+
+        return False
+
+    def has_exit(self) -> bool:
+        if self.has_recursive_call():
+            raise Exception(f"recursive calls are not implemented")
+
+        for arg in self.args:
+            if arg.has_exit():
+                return True
+
+        if self.opr == "call":
+            if self.value == "exit":
+                return True
+
+            f = get_function(self.value)
+
+            if f.expr.has_exit():
+                return True
+
+        return False
 
     def has_any(self, opr: str = None, any_opr: Set[str] = None, expr: Expr = None, path=[]) -> bool:
         if self in path:
@@ -217,14 +292,6 @@ class Expr:
 
         return False
 
-    @classmethod
-    def copy_exprs(self, xs: List[Expr]) -> List[Expr]:
-        r = []
-
-        for x in xs:
-            r.append(Expr(x.opr, Expr.copy_exprs(x.args), x.value))
-
-        return r
 
     def move_branches_to_last(self, for_tail_jump=False):
         """for_tail_jump: moves only branches that contains any of [return], [break], [continue], [goto]\n
@@ -253,7 +320,7 @@ class Expr:
                         any_jump = False
 
                         for arg in branch.args[1:]:
-                            if arg.has_any(opr="return"):
+                            if arg.has_any(opr="return") or arg.has_continue_or_break():
                                 any_jump = True
 
                                 break
@@ -519,7 +586,7 @@ class Expr:
 
         return b
 
-    def compile(self, stack_size=DEFAULT_STACK_SIZE, ptr=0, out=sys.stdout, inline=True, root: Expr = None):
+    def compile(self, stack_size=DEFAULT_STACK_SIZE, ptr=0, out=sys.stdout, inline=True, root: Expr = None, result_ptr: int = None, loop_ptr: int = None):
         self.flatten_args()
 
         if self.opr == "{":
@@ -533,9 +600,16 @@ class Expr:
             for i in range(len(xs)):
                 x = xs[i]
             # for x in xs:
-                x.compile(stack_size, ptr, out, inline)
+                if i > 0:
+                    out.write(f"<stk{ptr}>[-]\n")
+
+                x.compile(stack_size, ptr, out, inline, result_ptr=result_ptr, loop_ptr=loop_ptr)
 
                 if x.has_any(opr="return") and x.has_only_tail_return():
+                    break
+
+                if x.has_continue_or_break(tail_only=True):
+                # if x.opr in ["continue", "break"]:
                     break
 
             out.write("}\n")
@@ -543,10 +617,19 @@ class Expr:
             return
 
         if self.opr in [",", ";"]:
-            for arg in self.args:
-                arg.compile(stack_size, ptr, out, inline)
+            for i in range(len(self.args)):
+                arg = self.args[i]
+            # for arg in self.args:
+                if i > 0:
+                    out.write(f"<stk{ptr}>[-]\n")
+
+                arg.compile(stack_size, ptr, out, inline, result_ptr=result_ptr, loop_ptr=loop_ptr)
 
                 if arg.has_any(opr="return") and arg.has_only_tail_return():
+                    break
+
+                if arg.has_continue_or_break(tail_only=True):
+                # if arg.opr in ["continue", "break"]:
                     break
 
             return
@@ -555,66 +638,118 @@ class Expr:
             raise Exception(f"[return] in condition")
 
         if self.opr == "if":
+            # currently [if] returns value when used in function without [return]
             if len(self.args) == 3:
-                self.args[0].compile(stack_size, ptr + 2, out, inline)
+                else_flag = ptr
+                cond_base = ptr + 1
+                local_base = ptr + 1
 
-                out.write(f"<stk{ptr + 1}>+\n")
-                out.write(f"<stk{ptr + 2}>[[-] <stk{ptr + 1}>-\n")
+                self.args[0].compile(stack_size, cond_base, out, inline)
 
-                self.args[1].compile(stack_size, ptr + 2, out, inline)
-                out.write(f"<stk{ptr + 2}>[- <stk{ptr}>+ ]\n")
+                out.write(f"<stk{else_flag}>+\n")
+                out.write(f"<stk{cond_base}>[[-] <stk{else_flag}>-\n")
+
+                self.args[1].compile(stack_size, local_base, out, inline, result_ptr=result_ptr, loop_ptr=loop_ptr)
+                out.write(f"<stk{local_base}>[-]\n")
 
                 out.write("]\n")
-                out.write(f"<stk{ptr + 1}>[-\n")
+                out.write(f"<stk{else_flag}>[-\n")
 
-                self.args[2].compile(stack_size, ptr + 2, out, inline)
-                out.write(f"<stk{ptr + 2}>[- <stk{ptr}>+ ]\n")
-
+                self.args[2].compile(stack_size, local_base, out, inline, result_ptr=result_ptr, loop_ptr=loop_ptr)
+                out.write(f"<stk{local_base}>[-]\n")
+    
                 out.write("]\n")
             else:
-                out.write(f"<stk{ptr}> [-]\n")
-                self.args[0].compile(stack_size, ptr, out, inline)
+                cond_base = ptr
+                local_base = ptr + 1
+
+                self.args[0].compile(stack_size, cond_base, out, inline)
 
                 if len(self.args) == 1:
-                    out.write(f"<stk{ptr}> [-]\n")
+                    out.write(f"<stk{cond_base}> [-]\n")
                 elif len(self.args) == 2:
-                    out.write(f"<stk{ptr}> [[-]\n")
+                    out.write(f"<stk{cond_base}> [[-]\n")
 
-                    self.args[1].compile(stack_size, ptr + 1, out, inline)
+                    self.args[1].compile(stack_size, local_base, out, inline, result_ptr=result_ptr, loop_ptr=loop_ptr)
+                    out.write(f"<stk{local_base}> [-]\n")
 
                     out.write("]\n")
-
-                    out.write(f"<stk{ptr + 1}>[- <stk{ptr}>+ ]\n")
 
             return
 
         if self.opr == "while":
-            out.write(f"<stk{ptr + 1}> [-]\n")
-            self.args[0].compile(stack_size, ptr + 1, out, inline)
-            out.write(f"<stk{ptr + 1}> [\n")
+            if len(self.args) > 1 and self.args[1].has_continue_or_break():
+                local_loop_ptr = ptr
+                continue_flag = local_loop_ptr
+                cond_base = local_loop_ptr + 1
+                local_base = local_loop_ptr + 2
 
-            if self.args[1].has_any(opr="return"):
-                raise Exception(f"[return] in [while] is not implemented")
+                self.args[0].compile(stack_size, cond_base, out, inline)
 
-            if len(self.args) > 1:
-                self.args[1].compile(stack_size, ptr + 1, out, inline)
+                out.write(f"<stk{cond_base}> [\n")
 
-            out.write(f"<stk{ptr + 1}> [-]\n")
+                if self.args[1].has_any(opr="return"):
+                    raise Exception(f"[return] in [while] is not implemented")
 
-            self.args[0].compile(stack_size, ptr + 1, out, inline)
+                out.write(f"<stk{continue_flag}>+\n")
 
-            out.write("]\n")
+                self.args[1].compile(stack_size, local_base, out, inline, result_ptr=result_ptr, loop_ptr=local_loop_ptr)
+                out.write(f"<stk{local_base}> [-]\n")
+
+                out.write(f"<stk{cond_base}> [-]\n")
+                out.write(f"<stk{continue_flag}> [-\n")
+                self.args[0].compile(stack_size, cond_base, out, inline)
+                out.write("]\n")
+
+                out.write("]\n")
+            else:
+                cond_base = ptr
+                local_base = ptr
+
+                self.args[0].compile(stack_size, cond_base, out, inline)
+                out.write(f"<stk{cond_base}> [\n")
+
+                if self.args[1].has_any(opr="return"):
+                    raise Exception(f"[return] in [while] is not implemented")
+
+                if len(self.args) > 1:
+                    out.write(f"<stk{local_base}> [-]\n")
+                    self.args[1].compile(stack_size, local_base, out, inline, result_ptr=result_ptr)
+                    # out.write(f"<stk{local_base}> [-]\n")
+
+                out.write(f"<stk{cond_base}> [-]\n")
+
+                self.args[0].compile(stack_size, cond_base, out, inline)
+
+                out.write("]\n")
 
             return
 
         if self.opr == ":":
-            self.args[0].compile(stack_size, ptr, out, inline)
+            self.args[0].compile(stack_size, ptr, out, inline, result_ptr=result_ptr, loop_ptr=loop_ptr)
 
             return
 
         if self.opr == "return":
             for arg in self.args:
                 arg.compile(stack_size, ptr, out, inline)
+
+            if len(self.args) > 0 and result_ptr != None:
+                out.write(f"<stk{ptr}> [- <stk{result_ptr}>+ ]\n")
+
+            return
+
+        if self.opr == "break":
+            if loop_ptr == None:
+                raise Exception(f"break is not in loop")
+
+            out.write(f"<stk{loop_ptr}>[-]\n")
+
+            return
+
+        if self.opr == "conntinue":
+            if loop_ptr == None:
+                raise Exception(f"continue is not in loop")
 
             return
 
@@ -649,6 +784,7 @@ class Expr:
                 out.write(f"  <stk{ptr + 3}>[- <stk{ptr + 1}>+ ]\n")
                 out.write(f"  <stk{ptr + 4}>[[-] <stk{ptr + 1}>- <stk{ptr}>+ ]\n")
                 out.write(f"]\n")
+                out.write(f"<stk{ptr + 1}>[-]\n")
             else:
                 out.write(f"<stk{ptr + 1}>[-\n")
                 out.write(f"  <stk{ptr}>+\n")
@@ -656,6 +792,7 @@ class Expr:
                 out.write(f"  <stk{ptr + 3}>[- <stk{ptr + 2}>+ ]\n")
                 out.write(f"  <stk{ptr + 4}>[[-] <stk{ptr + 2}>- <stk{ptr}>- ]\n")
                 out.write(f"]\n")
+                out.write(f"<stk{ptr + 2}>[-]\n")
 
             return
 
@@ -744,6 +881,7 @@ class Expr:
                 out.write(f"<stk{ptr}>[-]\n")
                 expr.compile(stack_size, ptr, out, inline)
                 out.write(f"<stk{ptr}>.\n")
+                out.write(f"<stk{ptr}>[-]\n")
 
             return
 
@@ -762,7 +900,7 @@ class Expr:
 
             if self.opr.startswith("__c2bf_move"):
                 if src_expr.opr == "<ID>":
-                    out.write(f"<stk{src_expr.value}>[-\n")
+                    out.write(f"<{src_expr.value}>[-\n")
                 else:
                     src_expr.compile(stack_size, ptr, out, inline)
                     out.write(f"<stk{ptr}>[-\n")
@@ -816,20 +954,34 @@ class Expr:
 
                 return
 
+            if f.expr.has_explicit_result():
+                local_base = ptr + 1
+                local_result = ptr
+                arg_base = ptr
+            else:
+                local_base = ptr
+                local_result = None
+                arg_base = ptr
+
             out.write("{\n")
 
             for i in range(len(args)):
                 arg = args[i]
                 param = params[i]
 
-                out.write(f"<stk{ptr}>[-]\n")
-                arg.compile(stack_size, ptr, out, inline)
+                out.write(f"<stk{arg_base}>[-]\n")
+                arg.compile(stack_size, arg_base, out, inline)
 
                 out.write(f"({param})\n")
-                out.write(f"<stk{ptr}>[- <{param}>+ ]\n")
+                out.write(f"<stk{arg_base}>[- <{param}>+ ]\n")
 
+            out.write(f"# begin {f.name}\n")
             expr = f.expr
-            expr.compile(stack_size, ptr, out, inline, root=expr)
+            expr.compile(stack_size, local_base, out, inline, root=expr, result_ptr=local_result, loop_ptr=loop_ptr)
+            out.write(f"# end {f.name}\n")
+
+            if ptr != local_base:
+                out.write(f"<stk{local_base}>[-]\n")
 
             for i in range(len(args)):
                 param = params[i]
@@ -979,8 +1131,8 @@ def parse(src):
 
         if tkn.startswith("__c2bf_"):
             return Expr(tkn, [])
-        elif tkn == "return":
-            return Expr("return", [])
+        elif tkn in ["return", "break", "continue"]:
+            return Expr(tkn, [])
         elif tkn.startswith("("):
             tkn = tkn[1:]
 

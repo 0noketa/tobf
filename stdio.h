@@ -9,7 +9,7 @@ int c2bf_eof;
 int EOF = 255;
 
 feof(file) {
-    c2bf_eof;
+    return c2bf_eof;
 }
 
 getchar() {
@@ -26,7 +26,7 @@ getchar() {
         if (c == EOF) { c2bf_eof = 1; }
     }
 
-    c;
+    return c;
 }
 
 putchar(c) {
