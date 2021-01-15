@@ -17,6 +17,8 @@ class Function:
         self.expr = expr
 
         if self.expr.has_any(opr="return") or self.expr.has_any(opr="continue") or self.expr.has_any(opr="break"):
+            self.expr.rename_vars_to_unique(self.params)
+            self.params = [f"__c2bf_arg_{param}" for param in self.params]
             self.expr.move_branches_to_last(for_tail_jump=True)
 
     def is_pass(self) -> bool:
@@ -292,6 +294,45 @@ class Expr:
 
         return False
 
+    def get_unique_var_name(self, name: str, args: List[str], scopes: List[List[str]]) -> str:
+        for i in range(len(scopes) - 1, -1, -1):
+            if name in scopes[i]:
+                n = 0
+                for j in range(i - 1, -1, -1):
+                    if name in scopes[j]:
+                        n += 1
+
+                return f"__c2bf_local_{name}__{n}"
+
+        if name in args:
+            return f"__c2bf_arg_{name}"
+
+        return name
+
+    def rename_vars_to_unique(self, args: List[str] = [], scopes: List[List[str]] = []):
+        if self.opr == "<ID>":
+            self.value = self.get_unique_var_name(self.value, args, scopes)
+
+            return
+
+        if self.opr == "{":
+            scopes.append([])
+
+            for arg in self.args:
+                arg.rename_vars_to_unique(args, scopes)
+
+            scopes.pop()
+
+            return
+
+        if self.opr == "var":
+            vs = self.args[0].get_list()
+            names = list(map(Expr.get_name_in_vardecl, vs))
+            
+            scopes[-1].extend(names)
+
+        for arg in self.args:
+            arg.rename_vars_to_unique(args, scopes)
 
     def move_branches_to_last(self, for_tail_jump=False):
         """for_tail_jump: moves only branches that contains any of [return], [break], [continue], [goto]\n
