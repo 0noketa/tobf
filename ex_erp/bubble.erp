@@ -1,0 +1,51 @@
+import erp_std
+
+ary a 32
+var size
+var p
+var f
+
+: map
+    =f
+    'a =p
+: .L1
+    dup
+    {
+        p f call
+        p inc =p
+
+        dec
+        '.L1 jmp 
+    } { drop } if jmp
+
+var swapped
+var x
+var y
+
+: main
+    getInt 31 min =size
+
+    size { getInt swap ! } map
+
+: .L1
+    0 =swapped
+
+    size dec {
+        dup @ =x
+        dup inc @ =y
+
+        x y > {
+            1 =swapped
+
+            dup y swap !
+            inc x swap !
+        } {
+            drop
+        } if jmp
+    } map
+
+    swapped '.L1 '.L2 if jmp
+
+: .L2
+    size { @ putInt ln } map
+    ;

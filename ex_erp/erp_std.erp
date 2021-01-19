@@ -1,0 +1,45 @@
+: noop ;
+
+: and { 0 } if jmp
+: or { 1 } swap if jmp
+: not 0 1 if ;
+: toBool 1 0 if ;
+
+: dup2
+    swap dup
+    rot dup rot swap ;
+
+: min
+    dup2
+: .L1
+    < {
+        drop
+    } {
+        swap drop
+    } if jmp
+: max
+    dup2 swap 'min.L1 jmp
+
+: while
+	swap dup call {
+		swap dup call
+		'while jmp
+	} {
+		drop drop
+	} if jmp
+
+: else
+	=then_body ;
+: then
+var then_body
+	'then_body @ {
+		'then_body @ swap
+	} {
+		'noop
+	} if call
+
+	0 =then_body
+
+	if jmp
+
+

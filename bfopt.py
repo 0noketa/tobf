@@ -12,12 +12,15 @@ def check_balanced_loop(s: str, ptr: int = 0, from_: int = 0, to_: int = -1, mas
 
     i = from_
     while i < to_:
+        if s[i] == "]":
+            raise Exception(f"error")
+
         if s[i] == "[":
             j = skip_loop(s, i)
             
             if not check_balanced_loop(s, ptr, i + 1, j - 1, mask, max_mem_size):
                 return False
-
+            
             i = j
             continue
 
@@ -96,7 +99,7 @@ def remove_deadloops(s: str, is_main=False, max_mem_size=-1) -> str:
                     mem_size *= 2
             elif s[i] == "<":
                 ptr -= 1
-            elif s[i] in "+-,.":
+            elif s[i] in ["+", "-", ","]:
                 mask[ptr] = True
 
             i += 1
@@ -128,6 +131,52 @@ def optimize(s: str, is_partial=True, is_main=False, max_mem_size=-1) -> str:
             s = remove_deadloops(s, is_main, max_mem_size)
             if s != s0:
                 replaced = True
+
+    if is_main:
+        if max_mem_size == -1:
+            mem_size = 0x10000
+        else:
+            mem_size = max_mem_size
+
+        i = 0
+        while i < len(s):
+            i = s.find("]", i + 1)
+
+            if i == -1:
+                break
+
+            ptr = mem_size
+            mask = [True for _ in range(mem_size * 2)]
+            mask[ptr] = False
+
+            j = i + 1
+            while j < len(s):
+                if s[j] == "]":
+                    break
+
+                if s[j] == "[":
+                    k = skip_loop(s, j)
+
+                    if mask[ptr]:
+                        if not check_balanced_loop(s, ptr, j + 1, k - 1, mask, mem_size * 2):
+                            break
+
+                        mask[ptr] = False
+                        j = k
+                    else:
+                        s = s[:j] + s[k:]
+
+                    continue
+
+                if s[j] in ["+", "-", ","]:
+                    mask[ptr] = True
+                elif s[j] == ">":
+                    ptr += 1
+                elif s[j] == "<":
+                    ptr -= 1
+
+                j += 1
+
 
     return s
 
