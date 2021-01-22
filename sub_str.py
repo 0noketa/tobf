@@ -26,6 +26,11 @@
 #   writes reversed string
 # @writeln reversed
 #   writes reversed string with EOL
+# @=write ...literals
+# @=write ...literals
+# @=+write ...literals
+# @=+write ...literals
+#   set and writes string
 # @copypush ...in_vals
 #   appends copied chars to last.
 # @push ...in_vals
@@ -70,7 +75,7 @@ class Subsystem_Str(SubsystemBase):
 
     def str_clean(self):
         if self._str_initialized:
-            self._main.put_with(self.offset(), ">>[>]<[[-]<]<")
+            self._main.put_at(self.offset(), ">>[>]<[[-]<]<")
 
     def put_init(self, args: list):
         if len(args) > 0:
@@ -97,7 +102,7 @@ class Subsystem_Str(SubsystemBase):
             addr = self._main.addressof(addr0)
 
             if sign == "":
-                self._main.put_with(addr, "[-]")
+                self._main.put_at(addr, "[-]")
 
     def has_ins(self, name: str, args: list) -> bool:
         return (name in [
@@ -108,7 +113,8 @@ class Subsystem_Str(SubsystemBase):
             or len(args) > 0
                 and name in [
                     "@push", "@copypush", "@set", "@+set", "@len",
-                    "@move", "@+move", "@move_reversed", "@+move_reversed"]
+                    "@move", "@+move", "@move_reversed", "@+move_reversed",
+                    "@=write", "@=writeln", "@=+write", "@=+writeln",]
             or len(args) > 1
                 and name in [
                     "@split", "@+split"]
@@ -123,6 +129,16 @@ class Subsystem_Str(SubsystemBase):
             self.str_clean()
             return
 
+        if name in ["@=write", "@=writeln"]:
+            self.put("@set", args)
+            self.put(f"@{name[2:]}", [])
+            return
+
+        if name in ["@=+write", "@=+writeln"]:
+            self.put("@+set", args)
+            self.put(f"@{name[3:]}", [])
+            return
+
         if name == "@set":
             self.put("@clear", [])
             name = "@+set"
@@ -130,23 +146,15 @@ class Subsystem_Str(SubsystemBase):
         if name in "@+set":
             self._main.put(">" * self.offset() + ">>[>]")
 
-            _first = True
-            for arg in args:
-                if _first:
-                    arg2 = arg
-                    _first = False
-                else:
-                    arg2 = " " + arg
-
-                for c in arg2:
-                    self.put_set_char(ord(c))
+            for c in " ".join(args):
+                self.put_set_char(ord(c))
 
             self._main.put("<[<]<" + "<" * self.offset())
 
             return
 
         if name == "@clear":
-            self._main.put_with(self.offset(), ">>[>]<[[-]<]<")
+            self._main.put_at(self.offset(), ">>[>]<[[-]<]<")
 
             return
 
@@ -156,21 +164,21 @@ class Subsystem_Str(SubsystemBase):
 
         if name == "@+readln":
             if len(args) == 0:
-                self._main.put_with(self.offset(), ">>[>],----------[++++++++++>,----------]<[<]<")
+                self._main.put_at(self.offset(), ">>[>],----------[++++++++++>,----------]<[<]<")
 
                 return
 
             arg = args[0]
 
             if self._main.is_var(arg):
-                self._main.put_with(arg, "[")
-                self._main.put_with(self.offset(), ">>[>]>+<[<]<")
-                self._main.put_with(arg, "-]")
+                self._main.put_at(arg, "[")
+                self._main.put_at(self.offset(), ">>[>]>+<[<]<")
+                self._main.put_at(arg, "-]")
             else:
                 size = self._main.valueof(arg)
-                self._main.put_with(self.offset(), ">>[>]>" + "+" * size +"<<[<]<")
+                self._main.put_at(self.offset(), ">>[>]>" + "+" * size +"<<[<]<")
 
-            self._main.put_with(self.offset(),
+            self._main.put_at(self.offset(),
                 ">>[>]>[->>>+<<<<,"
                 # 255
                 + "+[-"
@@ -189,35 +197,35 @@ class Subsystem_Str(SubsystemBase):
         # uses 2 right tmp
         if name == "@+read":
             if len(args) == 0:
-                self._main.put_with(self.offset(), ">>[>]>+<<[<]<")
+                self._main.put_at(self.offset(), ">>[>]>+<<[<]<")
             else:
                 arg = args[0]
 
                 if self._main.is_var(arg):
-                    self._main.put_with(arg, "[")
-                    self._main.put_with(self.offset(), ">>[>]>+<[<]<")
-                    self._main.put_with(arg, "-]")
+                    self._main.put_at(arg, "[")
+                    self._main.put_at(self.offset(), ">>[>]>+<[<]<")
+                    self._main.put_at(arg, "-]")
                 else:
                     size = self._main.valueof(arg)
-                    self._main.put_with(self.offset(), ">>[>]>" + "+" * size +"<<[<]<")
+                    self._main.put_at(self.offset(), ">>[>]>" + "+" * size +"<<[<]<")
 
-            self._main.put_with(self.offset(), ">>[>]>[-[>+<-]<,>>]<<[<]<")
+            self._main.put_at(self.offset(), ">>[>]>[-[>+<-]<,>>]<<[<]<")
 
             return
 
         if name == "@write":
             if len(args) > 0 and args[0] == "reversed":
-                self._main.put_with(self.offset(), ">>[>]<[.<]<")
+                self._main.put_at(self.offset(), ">>[>]<[.<]<")
             else:
-                self._main.put_with(self.offset(), ">>[.>]<[<]<")
+                self._main.put_at(self.offset(), ">>[.>]<[<]<")
 
             return
 
         if name == "@writeln":
             if len(args) > 0 and args[0] == "reversed":
-                self._main.put_with(self.offset(), ">>[>]<[.<]++++++++++.[-]<")
+                self._main.put_at(self.offset(), ">>[>]<[.<]++++++++++.[-]<")
             else:
-                self._main.put_with(self.offset(), ">>[.>]++++++++++.[-]<[<]<")
+                self._main.put_at(self.offset(), ">>[.>]++++++++++.[-]<[<]<")
 
             return
 
@@ -227,25 +235,25 @@ class Subsystem_Str(SubsystemBase):
 
             for arg in args:
                 if arg == "input":
-                    self._main.put_with(self.offset(), ">>[>],<<[<]<")
+                    self._main.put_at(self.offset(), ">>[>],<<[<]<")
 
                     continue
 
                 if self._main.is_var(arg):
                     addr = self._main.addressof(arg)
 
-                    self._main.put_with(addr, "[")
+                    self._main.put_at(addr, "[")
 
                     if name == "@copypush":
                         self._main.put("+")
 
-                    self._main.put_with(self.offset(), ">>[>]>+<<[<]<")
-                    self._main.put_with(addr, "-]")
-                    self._main.put_with(self.offset(), ">>[>]>[<+>-]<<[<]<")
+                    self._main.put_at(self.offset(), ">>[>]>+<<[<]<")
+                    self._main.put_at(addr, "-]")
+                    self._main.put_at(self.offset(), ">>[>]>[<+>-]<<[<]<")
 
                     if name == "@copypush":
                         self._main.put("[")
-                        self._main.put_with(addr, "+")
+                        self._main.put_at(addr, "+")
                         self._main.put("-]")
 
                     continue
@@ -260,7 +268,7 @@ class Subsystem_Str(SubsystemBase):
         
         if name == "@pop":
             if len(args) == 0:
-                self._main.put_with(self.offset(), ">>[>]<[[-]<[<]]<")
+                self._main.put_at(self.offset(), ">>[>]<[[-]<[<]]<")
 
                 return
 
@@ -270,16 +278,16 @@ class Subsystem_Str(SubsystemBase):
                 sign, addr0 = separate_sign(arg)
                 addr = self._main.addressof(addr0)
 
-                self._main.put_with(self.offset(), ">>[>]<[[>+<-]>[<<[<]<+>>[>]>-]<<[<]]<")
-                self._main.put_with(self.offset(), "[")
-                self._main.put_with(addr, "-" if sign == "-" else "+")
-                self._main.put_with(self.offset(), "-]")
+                self._main.put_at(self.offset(), ">>[>]<[[>+<-]>[<<[<]<+>>[>]>-]<<[<]]<")
+                self._main.put_at(self.offset(), "[")
+                self._main.put_at(addr, "-" if sign == "-" else "+")
+                self._main.put_at(self.offset(), "-]")
 
             return
 
         if name == "@drop":
             if len(args) == 0:
-                self._main.put_with(self.offset(), ">>[-]>[[<+>-]>]<<[<]<")
+                self._main.put_at(self.offset(), ">>[-]>[[<+>-]>]<<[<]<")
 
                 return
 
@@ -289,10 +297,10 @@ class Subsystem_Str(SubsystemBase):
                 sign, addr0 = separate_sign(arg)
                 addr = self._main.addressof(addr0)
 
-                self._main.put_with(self.offset(), ">>[<<+>>-]>[[<+>-]>]<<[<]<")
-                self._main.put_with(self.offset(), "[")
-                self._main.put_with(addr, "-" if sign == "-" else "+")
-                self._main.put_with(self.offset(), "-]")
+                self._main.put_at(self.offset(), ">>[<<+>>-]>[[<+>-]>]<<[<]<")
+                self._main.put_at(self.offset(), "[")
+                self._main.put_at(addr, "-" if sign == "-" else "+")
+                self._main.put_at(self.offset(), "-]")
 
             return
 
@@ -332,14 +340,14 @@ class Subsystem_Str(SubsystemBase):
                 if arg_str == self:
                     raise Exception("[str:@move] can not move to the same str")
 
-                self._main.put_with(arg_str.offset(), ">>[>]>+<<[<]<")
+                self._main.put_at(arg_str.offset(), ">>[>]>+<<[<]<")
 
             self._main.put("-]")
 
             for arg in args:
                 arg_str: SubsystemBase = self._main.subsystem_by_alias(arg)
         
-                self._main.put_with(arg_str.offset(), ">>[>]>[<+>-]<[<]<")
+                self._main.put_at(arg_str.offset(), ">>[>]>[<+>-]<[<]<")
 
             self.put(ins_pop, [0])
             self._main.put("]")
@@ -378,22 +386,22 @@ class Subsystem_Str(SubsystemBase):
                 self._main.put("+[[-]")
 
                 # safe version of self.put("@drop", [self.offset()])
-                self._main.put_with(self.offset(), "[-]>>[<<+>>-]>[[<+>-]>]<<[<]<")
+                self._main.put_at(self.offset(), "[-]>>[<<+>>-]>[[<+>-]>]<<[<]<")
 
                 n, m = calc_small_pair(n_sep, 1)
                 if m == 1:
-                    self._main.put_with(self.offset(), "[" + ("-" * n) + "[" + ("+" * n))
+                    self._main.put_at(self.offset(), "[" + ("-" * n) + "[" + ("+" * n))
                 else:
-                    self._main.put_with(self.offset(), "[>" + ("+" * n) + "[<" + ("-" * m) + ">-]<[>" + ("+" * n) + "[<" + ("+" * m) + ">-]<" )
+                    self._main.put_at(self.offset(), "[>" + ("+" * n) + "[<" + ("-" * m) + ">-]<[>" + ("+" * n) + "[<" + ("+" * m) + ">-]<" )
 
                 # safe version of arg_str.put("@push", [self.offset()])
-                self._main.put_with(self.offset(), "[")
-                self._main.put_with(arg_str.offset(), ">>[>]>+<<[<]<")
-                self._main.put_with(self.offset(), "-]")
-                self._main.put_with(arg_str.offset(), ">>[>]>[<+>-]<<[<]<")
+                self._main.put_at(self.offset(), "[")
+                self._main.put_at(arg_str.offset(), ">>[>]>+<<[<]<")
+                self._main.put_at(self.offset(), "-]")
+                self._main.put_at(arg_str.offset(), ">>[>]>[<+>-]<<[<]<")
 
                 self._main.put("+")
-                self._main.put_with(self.offset(), "[-]]]")
+                self._main.put_at(self.offset(), "[-]]]")
                 self._main.put("]")
 
             return
@@ -401,15 +409,15 @@ class Subsystem_Str(SubsystemBase):
         if name == "@len":
             self.put_clear_dsts(args)
 
-            self._main.put_with(self.offset(), ">>[[>]<[>+<-]<[<]<+>>]>[[<+>-]>]<<[<]<[")
+            self._main.put_at(self.offset(), ">>[[>]<[>+<-]<[<]<+>>]>[[<+>-]>]<<[<]<[")
 
             for arg in args:
                 sign, addr0 = separate_sign(arg)
                 addr = self._main.addressof(addr0)
 
-                self._main.put_with(addr, "-" if sign == "-" else "+")
+                self._main.put_at(addr, "-" if sign == "-" else "+")
 
-            self._main.put_with(self.offset(), "-]")
+            self._main.put_at(self.offset(), "-]")
 
             return
 

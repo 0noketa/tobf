@@ -56,8 +56,8 @@ class Subsystem_Memory(SubsystemBase):
 
         return self._main.valueof(v)
 
-    def put_with(self, addr, s: str):
-        self._main.put_with(self.addressof(addr), s)
+    def put_at(self, addr, s: str):
+        self._main.put_at(self.addressof(addr), s)
 
     def begin_global(self, i):
         self._main.put(">" * int(i))
@@ -85,20 +85,20 @@ class Subsystem_Memory(SubsystemBase):
         self.inc_or_dec("-", n)
 
     def clear(self, v):
-        self.put_with(v, "[-]")
+        self.put_at(v, "[-]")
 
     def moveadd_global(self, in_addr, out_addrs):
-        self.put_with(in_addr, "[")
+        self.put_at(in_addr, "[")
 
         for out_addr in out_addrs:
-            self.put_with(out_addr, "+")
+            self.put_at(out_addr, "+")
 
-        self.put_with(in_addr, "-]")
+        self.put_at(in_addr, "-]")
 
     def load_global(self, addr):
-        self.put_with(addr, "[")
+        self.put_at(addr, "[")
         self._main.put("+")
-        self.put_with(addr, "-]")
+        self.put_at(addr, "-]")
 
     def store_it(self, out_globals, out_vars):
         for out_var in out_vars:
@@ -112,14 +112,14 @@ class Subsystem_Memory(SubsystemBase):
         self._main.put("[")
 
         for out_global in out_globals:
-            self.put_with(out_global, "+")
+            self.put_at(out_global, "+")
 
         for out_var in out_vars:
             sign, out_var = separate_sign(out_var)
             
             addr = self._main.addressof(out_var)
 
-            self.put_with(addr, "-" if sign == "-" else "+")
+            self.put_at(addr, "-" if sign == "-" else "+")
 
         self._main.put("-]")
 
@@ -145,7 +145,7 @@ class Subsystem_Memory(SubsystemBase):
         for i in range(size):
             self._main.put("[-]>" * 2)
 
-        self._main.put("<" * (self.offset() + size * 2))
+        self._main.put("<" * self.offset(size * 2))
 
 
     def __init__(self, _name="mem"):
@@ -159,7 +159,9 @@ class Subsystem_Memory(SubsystemBase):
         return r
 
     def has_ins(self, name: str, args: list) -> bool:
-        return (name == "clean"
+        return (name in [
+                "clean",
+                "@clear"]
             or len(args) == 1
                 and name == "init"
             or len(args) > 1
@@ -196,6 +198,10 @@ class Subsystem_Memory(SubsystemBase):
             self.put_clean(args)
             return
 
+        if ins_name == "@clear":
+            self.mem2_clean(args)
+            return
+
         if (len(args) < 2
             and ins_name in [
                 "@set", "@w_copy", "@w_move",
@@ -207,6 +213,10 @@ class Subsystem_Memory(SubsystemBase):
             raise Exception(f"error: {ins_name} {args}")
 
         # aliases
+        if ins_name in ["@w_copy", "@w_move"]:
+            if self._main.is_val(args[0]):
+                ins_name = "@set"
+
         if ins_name in ["@w_copyadd", "@w_copysub"]:
             sign = "+" if ins_name == "@w_copyadd" else "-"
             ins_name = "@w_copy"
@@ -254,20 +264,20 @@ class Subsystem_Memory(SubsystemBase):
                 if not self._main.is_var(address):
                     address = self._main.valueof(address)
 
-                    self.begin_global(self.offset() + address * 2 + 1)
+                    self.begin_global(self.offset(address * 2 + 1))
 
                     put_value(value) 
                     
-                    self.end_global(self.offset() + address * 2 + 1)
+                    self.end_global(self.offset(address * 2 + 1))
                 else:
                     addr = self._main.addressof(address)
 
                     self.load_global(addr)
 
                     self._main.put("[")
-                    self.put_with(addr, "+")
+                    self.put_at(addr, "+")
 
-                    self.put_with(self.offset() + 2, "+")
+                    self.put_at(self.offset(2), "+")
                     self._main.put("-]")
 
                     self.begin_global(self.offset())
@@ -287,11 +297,11 @@ class Subsystem_Memory(SubsystemBase):
             if ins_name == "@w_copy":
                 self.load_global(addr)
 
-                self.store_it([self.offset() + 4], ["+" + args[0]])
+                self.store_it([self.offset(4)], ["+" + args[0]])
             else:
-                self.put_with(addr, "[")
-                self.put_with(self.offset() + 4, "+")
-                self.put_with(addr, "-]")
+                self.put_at(addr, "[")
+                self.put_at(self.offset(4), "+")
+                self.put_at(addr, "-]")
 
             out_vars = args[1:]
 
@@ -302,12 +312,12 @@ class Subsystem_Memory(SubsystemBase):
                 addr = self._main.addressof(name)
                 self.load_global(addr)
 
-                self.store_it([self.offset() + 2], ["+" + name])
+                self.store_it([self.offset(2)], ["+" + name])
 
                 # for next destination
                 if i < len(out_vars) - 1:
-                    self.moveadd_global(self.offset() + 4, [self.offset()])
-                    self.moveadd_global(self.offset(), [0, self.offset() + 4])
+                    self.moveadd_global(self.offset(4), [self.offset()])
+                    self.moveadd_global(self.offset(), [0, self.offset(4)])
 
                 self.begin_global(self.offset())
                 self._main.put(""">>[->>[>>+<<-]<<[>>+<<-]+>>]""")
@@ -319,7 +329,7 @@ class Subsystem_Memory(SubsystemBase):
                 self.end_global(self.offset())
 
                 if i < len(out_vars) - 1:
-                    self.moveadd_global(0, [self.offset() + 4])
+                    self.moveadd_global(0, [self.offset(4)])
 
             return
 
@@ -337,8 +347,8 @@ class Subsystem_Memory(SubsystemBase):
 
             # static addressing
             if not self._main.is_var(address):
-                address = self._main.valueof(address)
-                address = self.offset() + address * 2 + 1
+                address = self._main.addressof(address)
+                address = self.offset(address * 2 + 1)
 
                 if ins_name == "@r_copy":
                     out_globals = [address]
@@ -361,15 +371,15 @@ class Subsystem_Memory(SubsystemBase):
 
                     v = self._main.addressof(name)
 
-                    self.put_with(address, "[")
-                    self.put_with(v, "-" if sign == "-" else "+")
-                    self.put_with(address, "-]")
+                    self.put_at(address, "[")
+                    self.put_at(v, "-" if sign == "-" else "+")
+                    self.put_at(address, "-]")
             else:
                 v = self._main.addressof(address)
 
                 self.load_global(v)
 
-                self.store_it([self.offset() + 2], ["+" + address])
+                self.store_it([self.offset(2)], ["+" + address])
 
                 self.begin_global(self.offset())
                 self._main.put(""">>[[>>+<<-]+>>-]""")
@@ -388,15 +398,15 @@ class Subsystem_Memory(SubsystemBase):
                     self.end_global(self.offset())
 
 
-                self.put_with(self.offset() + 2, "[")
+                self.put_at(self.offset(2), "[")
 
                 for name in args[1:]:
                     sign, name = separate_sign(name)
                     addr = self._main.addressof(name)
 
-                    self.put_with(addr, "-" if sign == "-" else "+")
+                    self.put_at(addr, "-" if sign == "-" else "+")
 
-                self.put_with(self.offset() + 2, "-]")
+                self.put_at(self.offset(2), "-]")
 
             return
 

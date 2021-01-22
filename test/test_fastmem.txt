@@ -1,0 +1,188 @@
+p p2 q q2 x y z x2 y2 z2 x3 y3 z3 cond e
+loadas a fastmem 5 1
+loadas s str 256
+
+!$ all_vars  p p2 q q2 x y x2 y2 x3 y3 z z2 z3
+!$ put_bool  bool | add '0 | print | sub '0
+!$ put_newline  set 10 | print
+
+
+
+
+# ####
+# @r_move imm var
+# @r_copy imm var
+# @w_move imm imm
+# @w_copy imm imm
+
+# initial write
+
+a:@clear
+a:@w_move '@ 0
+a:@w_copy '! 1
+
+# read c/m
+
+a:@r_copy 0 x
+! a:@r_move 0 <- x2 | x3
+a:@r_copy 1 y
+! a:@r_move 1 <- y2 | y3
+
+! eq '@ <- x | x2
+! eq '! <- y | y2
+! not <- x3 | y3
+! copy x | and y | and x2 | and y2 | and x3 | and y3 <- cond
+
+s:@=writeln @r_move imm var
+s:@=writeln @r_copy imm var
+s:@=write ->
+
+ifelse cond e
+    s:@=writeln ok
+else cond e
+    s:@=writeln error
+endifelse cond e
+
+! clear <- $!all_vars
+
+# overwrite
+
+! a:@w_move | a:@w_copy <- '@ 0
+! a:@w_copy | a:@w_move <- '! 1
+
+a:@r_copy 0 x
+a:@r_copy 1 y
+
+eq '@ x
+eq '! y
+! copy x | and y <- cond
+
+s:@=writeln @w_move imm imm
+s:@=writeln @w_copy imm imm
+s:@=write ->
+
+ifelse cond e
+    s:@=writeln ok
+else cond e
+    s:@=writeln error
+endifelse cond e
+
+! clear <- $!all_vars
+
+
+
+
+
+# ####
+# @r_move var var
+# @r_move -var var
+# @r_copy var var
+# @r_copy -var var
+# @w_move imm var
+# @w_move imm -var
+# @w_copy imm var
+# @w_copy imm -var
+
+# initial write (check pointer vars)
+
+a:@clear
+! set <- 1 p | 2 p2 | 3 q | 4 q2
+! a:@w_move '@ <- p | -p2
+! a:@w_copy '! <- q | -q2
+
+! eq <- 1 p | 0 p2 | 3 q | 0 q2 
+    ! $!put_bool <- p | p2 | q | q2
+    ! $!put_newline <- e
+! copy p | and p2 | and q | and q2 <- cond
+
+# read c/m
+
+! set <- 1 p | 2 p2 | 3 q | 4 q2
+! a:@r_copy <- p x | -p2 x2
+! a:@r_move <- q y | -q2 y2
+a:@r_copy p x3
+a:@r_move p x3
+a:@r_copy p z
+a:@r_copy q y3
+
+! eq <- 1 p | 0 p2 | 3 q | 0 q2 
+! eq '@ <- x | x2 | x3
+! eq '! <- y | y2
+! not <- y3 | z
+    ! $!put_bool <- p | p2 | q | q2 | x | x2 | x3 | y | y2 | y3 | z
+    ! $!put_newline <- e
+! and p | and p2 | and q | and q2 <- cond
+! and x | and x2 | and x3 <- cond
+! and y | and y2 | and y3 <- cond
+
+
+s:@=writeln @r_move var var
+s:@=writeln @r_move -var var
+s:@=writeln @r_copy var var
+s:@=writeln @r_copy -var var
+s:@=write ->
+
+ifelse cond e
+    s:@=writeln ok
+else cond e
+    s:@=writeln error
+endifelse cond e
+
+! clear <- $!all_vars
+
+# overwrite
+
+a:@clear
+! set <- 1 p | 2 p2 | 3 q | 4 q2
+! a:@w_move | a:@w_copy <- '@' p
+! a:@w_copy | a:@w_move <- '!' q
+
+a:@r_copy p x
+a:@r_copy q y
+
+eq '@' x
+eq '!' y
+! copy x | and y <- cond
+
+s:@=writeln @w_move imm var
+s:@=writeln @w_move imm -var
+s:@=writeln @w_copy imm var
+s:@=writeln @w_copy imm -var
+s:@=write ->
+
+ifelse cond e
+    s:@=writeln ok
+else cond e
+    s:@=writeln error
+endifelse cond e
+
+! clear <- $!all_vars
+
+
+
+
+# ####
+# @w_move var var
+# @w_move var -var
+# @w_copy var var
+# @w_copy var -var
+
+# nothing written
+clear cond
+
+s:@=writeln @w_move var var
+s:@=writeln @w_move var -var
+s:@=writeln @w_copy var var
+s:@=writeln @w_copy var -var
+s:@=write ->
+
+ifelse cond e
+    s:@=writeln ok
+else cond e
+    s:@=writeln error
+endifelse cond e
+
+! clear <- $!all_vars
+
+
+end

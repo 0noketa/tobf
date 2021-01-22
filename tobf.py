@@ -50,6 +50,9 @@
 #     copysub in_var ...out_vars
 # resb imm
 #   declare size of static memory. default=number of vars. works when no subsystem was loaded.
+#   will be replaced.
+# tmp addr
+#   changes address of implicit it. not implemented.
 # load subsystem_name ...args
 #   loads subsystem after reserved vars and subsystems already loaded
 # loadas alias_name subsystem_name ...args
@@ -83,6 +86,10 @@
 # every ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
 # ! ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
 #   invoke every instruction with args + sub_args
+# !!
+#   remove all macro. no purpose.
+# !! name ...
+#   define macro. macro is avairable as $!name in args of !
 # bf src
 #   inline brainfuck.
 # include_bf file_name mem_size
@@ -116,6 +123,7 @@ class Tobf(Mainsystem):
         self._idt = 0
         self._size = 0
         self._newest_subsystem_name = ""
+        self._concatnative_macros = {}
 
     def reserve(self, size):
         """manually selects size of variable area\n
@@ -225,7 +233,7 @@ class Tobf(Mainsystem):
         self.put(s)
         self.end_global(addr)
 
-    def put_with(self, addr:int, s:str):
+    def put_at(self, addr:int, s:str):
         self.with_addr(addr, s)
 
     def put_with_every(self, addrs:list, s:str):
@@ -245,6 +253,10 @@ class Tobf(Mainsystem):
     def is_var(self, value) -> bool:
         if type(value) != str:
             return False
+        elif self.is_signed(value):
+            sign, value2 = separate_sign(value)
+
+            return self.is_var(value2)
         elif ":" in value:
             sub_name, name = split(value, sep=":", maxsplit=1)
             sub = self.subsystem_by_alias(sub_name)
@@ -442,8 +454,8 @@ class Tobf(Mainsystem):
 
 
         if n > 1:
-            self.put_with(addressof_tmp, "+" * n)
-            self.put_with(addressof_tmp, "[")
+            self.put_at(addressof_tmp, "+" * n)
+            self.put_at(addressof_tmp, "[")
             self.uplevel()
 
         for name in args:
@@ -456,7 +468,7 @@ class Tobf(Mainsystem):
 
         if n > 1:
             self.downlevel()
-            self.put_with(addressof_tmp, "-]")
+            self.put_at(addressof_tmp, "-]")
 
     def put_invoke(self, name:str, args:list):
         if ":" in name:
@@ -556,12 +568,12 @@ class Tobf(Mainsystem):
             addr0 = self.addressof(args[0])
             addr1 = self.addressof(args[1])
 
-            self.put_with(addr1, "[")
-            self.put_with(addr0, "+")
-            self.put_with(addr1, "-]")
+            self.put_at(addr1, "[")
+            self.put_at(addr0, "+")
+            self.put_at(addr1, "-]")
 
             self.put("[")
-            self.put_with(addr1, "+")
+            self.put_at(addr1, "+")
             self.put("-]")
 
             return True
@@ -582,9 +594,9 @@ class Tobf(Mainsystem):
             addr = self.addressof(args[0])
 
             self.put("+")
-            self.put_with(addr, "[")
-            self.put_with(0, "-")
-            self.put_with(addr, "[-]]")
+            self.put_at(addr, "[")
+            self.put_at(0, "-")
+            self.put_at(addr, "[-]]")
 
             self.clear_vars(args, without=[args[0]])
 
@@ -595,19 +607,23 @@ class Tobf(Mainsystem):
             return True
 
         if name == "eq":
+            import sys
             v = self.valueof(args[0])
+            sys.stderr.write(f"eq {v}\n")
 
             for arg in args[1:]:
                 addr = self.addressof(arg)
 
-                # it = arg - imm
-                self.load_it(arg)
-                self.put_set(v, ["-0"], addressof_tmp=addr)
+                self.put("+")
 
-                self.put_with(addr, "+")
+                self.put_at(addr, ("-" * v))
+                self.put_at(addr, "[")
+                self.put("-")
+                self.put_at(addr, "[-]]")
+
                 self.put("[")
-                self.put_with(addr, "-")
-                self.put("[-]]")
+                self.put_at(addr, "+")
+                self.put("-]")
 
             return True
 
@@ -617,25 +633,25 @@ class Tobf(Mainsystem):
             for arg in args[1:]:
                 addr = self.addressof(arg)
 
-                self.put_with(addr, "[")
+                self.put_at(addr, "[")
                 self.put("+")
-                self.put_with(addr, "-]")
+                self.put_at(addr, "-]")
 
-                self.put_with(addr0, "[")
-                self.put_with(0, "-")
+                self.put_at(addr0, "[")
+                self.put_at(0, "-")
                 if name == "copyeq" or len(args) > 2:
-                    self.put_with(addr, "+")
-                self.put_with(addr0, "-]")
+                    self.put_at(addr, "+")
+                self.put_at(addr0, "-]")
 
                 if name == "copyeq" or len(args) > 2:
-                    self.put_with(addr, "[")
-                    self.put_with(addr0, "+")
-                    self.put_with(addr, "-]")
+                    self.put_at(addr, "[")
+                    self.put_at(addr0, "+")
+                    self.put_at(addr, "-]")
 
-                self.put_with(addr, "+")
+                self.put_at(addr, "+")
 
                 self.put("[")
-                self.put_with(addr, "-")
+                self.put_at(addr, "-")
                 self.put("[-]]")
 
             if name == "moveeq" or len(args) > 2:
@@ -657,31 +673,31 @@ class Tobf(Mainsystem):
                 # move v?  v0
                 # if it  inc v?
 
-                self.put_with(addr, "[")
+                self.put_at(addr, "[")
                 self.put("+")
-                self.put_with(addr, "[-]]")
+                self.put_at(addr, "[-]]")
 
-                self.put_with(addr0, "[")
+                self.put_at(addr0, "[")
                 self.put("+")
-                self.put_with(addr, "+")
-                self.put_with(addr0, "[-]]")
+                self.put_at(addr, "+")
+                self.put_at(addr0, "[-]]")
 
-                self.put_with(addr, "[")
-                self.put_with(addr0, "+")
-                self.put_with(addr, "-]")
+                self.put_at(addr, "[")
+                self.put_at(addr0, "+")
+                self.put_at(addr, "-]")
 
                 if name == "nor":
-                    self.put_with(addr, "+")
+                    self.put_at(addr, "+")
 
                     self.put("[")
-                    self.put_with(addr, "-")
+                    self.put_at(addr, "-")
                     self.put("-]")
                 else:
                     self.put("[")
-                    self.put_with(addr, "+")
+                    self.put_at(addr, "+")
                     self.put("-]")
 
-            self.put_with(addr0, "-")
+            self.put_at(addr0, "-")
 
             return True
 
@@ -696,24 +712,41 @@ class Tobf(Mainsystem):
 
                 # breaks args[0]
 
-                self.put_with(addr, "[")
+                self.put_at(addr, "[")
                 self.put("+")
-                self.put_with(addr, "[-]]")
+                self.put_at(addr, "[-]]")
 
                 if name == "nand":
-                    self.put_with(addr, "+")
+                    self.put_at(addr, "+")
 
                 self.put("[")
-                self.put_with(addr0, "[")
-                self.put_with(addr, "+" if name == "and" else "-")
-                self.put_with(addr0, "[-]]")
+                self.put_at(addr0, "[")
+                self.put_at(addr, "+" if name == "and" else "-")
+                self.put_at(addr0, "[-]]")
                 self.put("-]")
 
             return True
 
+        if name == "!$":
+            if len(args) == 0:
+                self._concatnative_macros = {}
+                return
+
+            self._concatnative_macros[args[0]] = args[1:]
+
+            return
+
         if name in ["every", "!"]:
             if not ("<-" in args):
                 raise Exception(f"[every] requires <-")
+
+            args2 = []
+            for arg in args:
+                if arg.startswith("$!"):
+                    args2.extend(self._concatnative_macros[arg[2:]])
+                else:
+                    args2.append(arg)
+            args = args2
 
             inss = split_list(args[:args.index("<-")], "|")
             argss = split_list(args[args.index("<-") + 1:], "|")
@@ -910,7 +943,7 @@ class Tobf(Mainsystem):
                     mem_size = 1
 
             if mem_size <= 1 and len(vs) == 0:
-                self.put_with(0, bf)
+                self.put_at(0, bf)
 
                 return True
 
@@ -930,7 +963,7 @@ class Tobf(Mainsystem):
                         break
 
                 if direct_io:
-                    self.put_with(self.addressof(vs[0]), bf)
+                    self.put_at(self.addressof(vs[0]), bf)
 
                     return True
 
@@ -939,21 +972,21 @@ class Tobf(Mainsystem):
             for i in range(len(vs)):
                 addr = self.addressof(vs[i])
 
-                self.put_with(addr, "[")
-                self.put_with(bf_ptr + i, "+")
-                self.put_with(addr, "-]")
+                self.put_at(addr, "[")
+                self.put_at(bf_ptr + i, "+")
+                self.put_at(addr, "-]")
 
-            self.put_with(bf_ptr, bf)
+            self.put_at(bf_ptr, bf)
 
             for i in range(len(vs)):
                 addr = self.addressof(vs[i])
 
-                self.put_with(bf_ptr + i, "[")
-                self.put_with(addr, "+")
-                self.put_with(bf_ptr + i, "-]")
+                self.put_at(bf_ptr + i, "[")
+                self.put_at(addr, "+")
+                self.put_at(bf_ptr + i, "-]")
 
             for i in range(len(vs), mem_size):
-                self.put_with(bf_ptr + i, "[-]")
+                self.put_at(bf_ptr + i, "[-]")
 
             return True
 
@@ -984,20 +1017,20 @@ class Tobf(Mainsystem):
                 if self.is_var(arg):
                     addr = self.addressof(arg)
 
-                    self.put_with(addr, "[")
-                    self.put_with(c_base_ptr + i, "+")
-                    self.put_with(addr, "-]")
+                    self.put_at(addr, "[")
+                    self.put_at(c_base_ptr + i, "+")
+                    self.put_at(addr, "-]")
                 else:
                     v = self.valueof(arg)
-                    self.put_with(c_base_ptr + i, "+" * v)
+                    self.put_at(c_base_ptr + i, "+" * v)
 
-            self.put_with(c_base_ptr, bf)
+            self.put_at(c_base_ptr, bf)
 
             addr = self.addressof(c_func_args_and_result[-1])
 
-            self.put_with(c_base_ptr, "[")
-            self.put_with(addr, "+")
-            self.put_with(c_base_ptr, "-]")
+            self.put_at(c_base_ptr, "[")
+            self.put_at(addr, "+")
+            self.put_at(c_base_ptr, "-]")
 
             return True
 

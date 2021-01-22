@@ -68,10 +68,9 @@ class Mainsystem:
         """is valid variable"""
         return False
     def is_signed(self, value) -> bool:
-        """is valid signed variable"""
-        return (type(value) == "str" and len(value) > 1
-            and value[0] in ["+", "-"]
-            and self.is_var(value[1:]))
+        """is valid signed value"""
+        return (type(value) == str and len(value) > 1
+            and value[0] in ["+", "-"])
     def is_sub(self, value, typ="") -> bool:
         """is valid subsystem"""
         return False
@@ -107,7 +106,7 @@ class Mainsystem:
         return SubsystemBase()
     def put(self, s:str):
         pass
-    def put_with(self, addr:int, s:str):
+    def put_at(self, addr:int, s:str):
         """>>>something<<<"""
         pass
     def put_invoke(self, name:str, args:list):
@@ -145,6 +144,8 @@ class SubsystemBase:
     def copy(self, _name:str, _to=None):
         if _to == None:
             r = type(self)(_name)
+        else:
+            r = _to(_name)
         r._basename = self._name if self._basename == "" else self._basename
         r._main=self._main
         r._instructions=self._instructions
@@ -266,9 +267,9 @@ class SubsystemBase:
         pass
     def put_clean(self, args:list):
         pass
-    def offset(self):
-        """offset base of this subsystem"""
-        return self._offset
+    def offset(self, n: int = 0):
+        """adds base address of this subsystem"""
+        return self._offset + n
     def size(self):
         return len(self._vars) if self._size == -1 else self._size
 

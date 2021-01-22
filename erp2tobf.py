@@ -47,14 +47,21 @@ import io
 
 
 class Vliw:
-    base_stack = registers.copy()
+    """for register-based targets"""
+
+    base_stack = ["x", "y", "z", "X", "Y", "Z"]
+    instructions = ["swap", "dup", "rot", "drop", "+", "-"]
 
     @classmethod
-    def fetch_vliw(self, src: List[str], i: int, base_stack: List[str] = None) -> Vliw:
+    def fetch_vliw(self, src: List[str], i: int, base_stack: List[str] = None, instructions: List[str] = None) -> Vliw:
+        """base_stack: readonly. layout of stack on registers.\n
+           instructions: readonly. micro instructions for on-register calc.
+        """
         base_stack = Vliw.base_stack if base_stack == None else base_stack
+        instructions = Vliw.instructions if instructions == None else instructions
         size = len(base_stack)
         j = i
-        while j < len(src):
+        while j < len(src) and (src[j] in instructions):
             if src[j] in ["swap", "rot"]:
                 j += 1
                 continue
@@ -85,7 +92,7 @@ class Vliw:
         return Vliw(src[i:j], base_stack)
 
     def __init__(self, src: List[str], base_stack: List[str] = None) -> None:
-        """"base_stack: readonly. layout of stack on registers."""
+        """private"""
         self.src = src
         self.base_stack = Vliw.base_stack if base_stack == None else base_stack
         self.stack: List[str] = None
@@ -135,13 +142,22 @@ class Vliw:
 
         used = len(self.base_stack)
         for i in range(len(self.base_stack)):
+            if i >= len(self.stack):
+                break
             if not self.result_contains_any(self.base_stack[i]) and self.stack[i] == self.base_stack[i]:
                 used -= 1
 
         return used
 
 
-stack_on_registers = ["x", "y", "z", "X", "Y", "Z"]
+# target description (tobf does not use vliw for builtin stack-jugggler)
+stack_on_registers = ["x", "y", "z"]  # ["x", "y", "z", "X", "Y", "Z"]
+micro_instructions = []  # ["swap", "dup", "rot", "drop", "+", "-"]
+min_vliw_size = 4
+max_mem_size = 256
+max_rstack_size = 0x100
+max_dstack_size = 0x10000
+
 
 builtin_words = [
     ":", "{", "}", ";",
@@ -191,12 +207,12 @@ def get_vars(src: List[str]) -> List[str]:
     return r
 def get_pointable_vars(src: List[str], vars: List[str] = None) -> List[str]:
     vars = get_vars(src) if vars == None else vars
-    r = []
+    r = set()
     for i in range(len(src) - 1):
         if src[i].startswith("'") and len(src[i]) > 1 and (src[i][1:] in vars):
-            r.append(src[i][1:])
+            r |= set([src[i][1:]])
 
-    return r
+    return list(r)
 def get_arrays(src: List[str]) -> List[str]:
     r = []
     for i in range(len(src) - 1):
@@ -204,7 +220,11 @@ def get_arrays(src: List[str]) -> List[str]:
             r.append(src[i + 1])
 
     return r
-def get_array_size(src: List[str], name: str) -> int:
+def get_array_size(src: List[str], name: str = None) -> int:
+    if name == None:
+        arrays = get_arrays(src)
+        return sum([get_array_size(src, a) for a in arrays])
+
     for i in range(len(src) - 2):
         if src[i] == "ary" and src[i + 1] == name:
             return int(src[i + 2])
@@ -218,6 +238,10 @@ def get_array_pos(src: List[str], name: str) -> int:
         return sum([get_array_size(src, a) for a in arrays[:i]])
     else:
         return -1
+def get_mem_size(src: List[str]) -> int:
+    pointable_vars = get_pointable_vars(src)
+    
+    return len(pointable_vars) + get_array_size(src)
 
 def label(src: List[str], i: int, vars: List[str] = None, arrays: List[str] = None) -> int:
     r = 1
@@ -275,46 +299,48 @@ def load(file: io.TextIOWrapper, loaded: List[str] = []) -> List[str]:
     return src
 
 def compile(src: List[str]):
+    last_label = 255
+    rstack_size = 16
+    dstack_size = 32
+
     vars = get_vars(src)
     pointable_vars = get_pointable_vars(src, vars)
     arrays = get_arrays(src)
+    mem_size = get_mem_size(src)
+    rstack_name = "rstack"
+    dstack_name = "dstack"
+    mem_name = "memory"
     dst = []
     lazy = []
     main_label = -1
-    mem_size = 64
+    label_diff = 1
+
+    if mem_size > max_mem_size or rstack_size > max_rstack_size or dstack_size > max_dstack_size:
+        raise Exception("tryed to use many memory cells")
 
     def append_push(v, stack="d", immediate=False, copy=False):
-        pfx = stack
-        if immediate:
-            dst.append(f"stack:@set {v} {pfx}sp")
+        stack_name = rstack_name if stack == "r" else dstack_name
+
+        if copy:
+            dst.append(f"{stack_name}:@copypush {v}")
         else:
-            if copy:
-                dst.append(f"stack:@w_copy {v} {pfx}sp")
-            else:
-                dst.append(f"stack:@w_move {v} {pfx}sp")
+            dst.append(f"{stack_name}:@push {v}")
         
-        if stack == "r":
-            dst.append(f"dec rsp")
-        else:
-            dst.append(f"inc dsp")
     def append_push_imm(v, stack="d"):
         append_push(v, stack, True)
     def append_pop(v, stack="d"):
-        pfx = stack
-        if stack == "r":
-            dst.append(f"inc rsp")
-        else:
-            dst.append(f"dec dsp")
-        dst.append(f"stack:@r_move {pfx}sp {v}")
+        stack_name = rstack_name if stack == "r" else dstack_name
+
+        dst.append(f"{stack_name}:@pop {v}")
 
     i = 0
     while i < len(src):
         tkn = src[i]
 
-        if (tkn in ["swap", "dup", "rot"]):
-            vliw = Vliw.fetch_vliw(src, i, stack_on_registers)
+        if tkn in micro_instructions:
+            vliw = Vliw.fetch_vliw(src, i, stack_on_registers, micro_instructions)
 
-            if len(vliw.src) > 1:
+            if len(vliw.src) >= min_vliw_size:
                 def push_vliw():
                     vliw.calc()
 
@@ -322,12 +348,16 @@ def compile(src: List[str]):
 
                     for i in list(reversed(vliw.base_stack))[:vliw.used()]:
                         append_pop(i)
-        
+
+                    old_cell = ""        
                     for i in range(len(vliw.base_stack) - vliw.used(), len(vliw.stack)):
                         cell = vliw.stack[i]
 
                         if len(cell) == 1:
                             append_push(f"{cell}", copy=True)
+                            old_cell = ""
+                        elif cell == old_cell:
+                            append_push(f"b")
                         else:
                             dst.append(f"copy {cell[0]} b")
                             i = 1
@@ -338,6 +368,7 @@ def compile(src: List[str]):
 
                                 i += 2
                             append_push(f"b")
+                            old_cell = cell
 
                     dst.append(f"# end vliw")
 
@@ -356,6 +387,7 @@ def compile(src: List[str]):
             dst.append(f"erp:@goto move x")
             dst.append(f"erp:@at {label(src, i)}")
         elif tkn == ":":
+            dst.append(f"# : {src[i + 1]}")
             dst.append(f"erp:@at {label(src, i)}")
             if src[i + 1] == "main":
                 main_label = label(src, i)
@@ -383,30 +415,13 @@ def compile(src: List[str]):
             append_push("z")
             dst.append(f"endifelse b e")
         elif tkn == "drop":
-            append_pop("x")
-        elif tkn == "dup":
-            append_pop("x")
-            append_push("x", copy=True)
-            append_push("x")
-        elif tkn == "swap":
-            append_pop("x")
-            append_pop("y")
-            append_push("x")
-            append_push("y")
-        elif tkn == "rot":
-            # 1 2 3 -- 2 3 1
-            append_pop("z")
-            append_pop("y")
-            append_pop("x")
-            append_push("y")
-            append_push("z")
-            append_push("x")
+            dst.append(f"{dstack_name}:@pop")
+        elif tkn in ["dup", "swap", "rot"]:
+            dst.append(f"{dstack_name}:@{tkn}")
         elif tkn == "getc":
-            dst.append(f"input x")
-            append_push("x")
+            dst.append(f"{dstack_name}:@push input")
         elif tkn == "putc":
-            append_pop("x")
-            dst.append(f"print x")
+            dst.append(f"{dstack_name}:@pop print")
         elif tkn in ["getInt", ","]:
             dst.append(f"in:readlnint x")
             append_push("x")
@@ -425,15 +440,10 @@ def compile(src: List[str]):
             # sizeof(uintptr_t) == 1
             if tkn[0] == "p":
                 tkn = tkn[1:].lower()
-            append_pop("x")
-            dst.append(f"{tkn} x")
-            append_push("x")
+            dst.append(f"{dstack_name}:@{tkn}")
         elif tkn in ["+", "-"]:
             o = {"+": "add", "-": "sub"}[tkn]
-            append_pop("y")
-            dst.append(f"dec dsp")
-            dst.append(f"stack:@w_move{o} y dsp")
-            dst.append(f"inc dsp")
+            dst.append(f"{dstack_name}:@{o}")
         elif tkn in [">", "<"]:
             if tkn == ">":
                 append_pop("y")
@@ -458,18 +468,17 @@ def compile(src: List[str]):
         elif tkn == "*":
             append_pop("y")
             append_pop("x")
-            dst.append(f"copy x b")
             dst.append(f"clear z")
-            dst.append(f"while b")
+            dst.append(f"while x")
             dst.append(f"copyadd y z")
-            dst.append(f"dec b")
-            dst.append(f"endwhile b")
+            dst.append(f"dec x")
+            dst.append(f"endwhile x")
             append_push("z")
         elif tkn.startswith("=") and (tkn[1:] in vars):
             append_pop(f"x")
  
             if tkn[1:] in pointable_vars:
-                dst.append(f"stack:@w_move x {pointable_vars.index(tkn[1:])}")
+                dst.append(f"{mem_name}:@w_move x {pointable_vars.index(tkn[1:])}")
             else:
                 dst.append(f"move x _{tkn[1:]}")
         elif tkn.startswith("'") and tkn.endswith("'") and len(tkn) == 3:
@@ -483,16 +492,16 @@ def compile(src: List[str]):
                 append_push_imm(f"{word_label(src, tkn[1:], i)}")
         elif tkn.startswith("@"):
             append_pop("x")
-            dst.append(f"stack:@r_copy x y")
+            dst.append(f"{mem_name}:@r_copy x y")
             append_push("y")
         elif tkn.startswith("!"):
             append_pop("y")
             append_pop("x")
-            dst.append(f"stack:@w_move x y")
+            dst.append(f"{mem_name}:@w_move x y")
         elif tkn.isdigit():
             append_push_imm(tkn)
         elif tkn in pointable_vars:
-            dst.append(f"stack:@r_copy {pointable_vars.index(tkn)} x")
+            dst.append(f"{mem_name}:@r_copy {pointable_vars.index(tkn)} x")
             append_push(f"x")
         elif tkn in vars:
             append_push(f"_{tkn}", copy=True)
@@ -503,35 +512,39 @@ def compile(src: List[str]):
 
         i += 1
 
-    dst.append("erp:@end 255")
+    dst.append(f"erp:@end {last_label}")
 
     head = [
-        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e rsp dsp",
+        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e",
         "loadas out code mod_print",
         "loadas in code mod_input",
-        "loadas erp code mod_jump",
-        f"loadas stack mem {mem_size}",
-        f"set {mem_size - 1} rsp"
+        "loadas erp code mod_jump"
     ]
 
-    if len(pointable_vars) or len(arrays):
+    mem_loaders = [
+        (rstack_size, f"loadas {rstack_name} stk {rstack_size}"),
+        (dstack_size, f"loadas {dstack_name} stk {dstack_size}")
+    ]
+
+    if mem_size > 0:
+        if mem_size > 8:
+            mem_loaders.append((mem_size, f"loadas {mem_name} mem {mem_size}"))
+        else:
+            mem_loaders.append((mem_size, f"loadas {mem_name} fastmem {mem_size} 1"))
+
+    mem_loaders.sort(key=(lambda x: x[0]))
+    head.extend([ldr[1] for ldr in mem_loaders])
+
+    if len(pointable_vars) > 0:
         for i in range(len(pointable_vars)):
-            head.append(f"stack:@w_move _{pointable_vars[i]} {i}")
-            dst.append(f"stack:@r_move {i} _{pointable_vars[i]}")
-
-        dsp = len(pointable_vars)
-
-        if len(arrays):
-            dsp += get_array_pos(src, arrays[-1]) + get_array_size(src, arrays[-1])
-
-        head.append(f"set {dsp} dsp")
+            head.append(f"{mem_name}:@w_move _{pointable_vars[i]} {i}")
+            dst.append(f"{mem_name}:@r_move {i} _{pointable_vars[i]}")
 
     head.append("erp:@begin 0")
 
     if main_label != -1:
         head.extend([
-            f"stack:@set 255 rsp",        
-            f"dec rsp",
+            f"{rstack_name}:@push {last_label}",        
             f"erp:@goto set {main_label}"
         ])
 
@@ -546,17 +559,10 @@ def optimize(src: List[str]):
     i = 0
     while i < len(src):
         if i + 1 < len(src):
-            if src[i] == "swap" and  src[i + 1] == "swap":
-                src.pop(i)
-                src.pop(i)
-
-        if src[i] == "drop":
-            if src[i - 1].isdigit():
-                i -= 1
-                src.pop(i)
-                src.pop(i)
-                
-                continue
+            if src[i] == "1" and  src[i + 1] == "+":
+                src = src[:i] + ["inc"] + src[i + 1:]
+            elif src[i] == "1" and  src[i + 1] == "-":
+                src = src[:i] + ["dec"] + src[i + 1:]
 
         i += 1
 
