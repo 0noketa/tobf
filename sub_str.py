@@ -51,38 +51,31 @@
 #   count chars in bytes. result is uint(<256).
 
 
-
-from base import separate_sign, calc_small_pair, SubsystemBase, Mainsystem
+from typing import cast, Union, List, Tuple, Dict, Callable
+from tobf import Tobf
+from base import separate_sign, calc_small_pair, SubsystemBase
 
 
 class Subsystem_Str(SubsystemBase):
-    def __init__(self, _name="str"):
-        super().__init__(_name)
-        self._str_initialized = False
-        self._str_size = 0
-    def copy(self, _name):
-        r = super().copy(_name)
-        r._str_initialized = self._str_initialized
-        r._str_size = self._str_size
+    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], get_addr: Callable[[int], int]):
+        super().__init__(tobf, _name)
+        self._main = cast(Tobf, self._main)
 
-        return r
-
-    def str_init(self, _ssize=16):
-        if not self._str_initialized:
-            self._str_size = _ssize
-            self.resize(self._str_size + 6)
-            self._str_initialized = True
-
-    def str_clean(self):
-        if self._str_initialized:
-            self._main.put_at(self.offset(), ">>[>]<[[-]<]<")
-
-    def put_init(self, args: list):
         if len(args) > 0:
-            _size = self._main.valueof(args[0])
-            self.str_init(int(_size))
+            self._str_size = self._main.valueof(args[0])
         else:
-            self.str_init()
+            self._str_size = 16
+
+        self.resize(self._str_size + 6)
+        self.set_base(get_addr(self.size()))
+
+        self.def_const("size", self._str_size)
+
+    def put_clean(self, args: List[str]):
+        if len(args) > 0 and args[0] == "fast":
+            return
+
+        self._main.put_at(self.offset(), ">>[>]<[[-]<]<")
 
     def put_set_char(self, v: int):
         """current_addr+1 as workspace. and moves to current_addr+1"""
@@ -120,13 +113,12 @@ class Subsystem_Str(SubsystemBase):
                     "@split", "@+split"]
             or super().has_ins(name, args))
 
-    def put(self, name: str, args: list):
+    def put(self, name: str, args: List[Union[int, str]], tmps: List[int] = None):
         if name == "init":
-            self.put_init(args)
             return
 
         if name == "clean":
-            self.str_clean()
+            self.put_clean()
             return
 
         if name in ["@=write", "@=writeln"]:

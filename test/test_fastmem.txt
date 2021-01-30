@@ -1,5 +1,7 @@
-p p2 q q2 x y z x2 y2 z2 x3 y3 z3 cond e
-loadas a fastmem 5 1
+p p2 q q2 x y z x2 y2 z2 x3 y3 z3 cond e t2
+tmp t2
+
+loadas a fastmem 5
 loadas s str 256
 
 !$ all_vars  p p2 q q2 x y x2 y2 x3 y3 z z2 z3

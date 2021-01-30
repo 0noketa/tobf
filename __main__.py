@@ -59,7 +59,7 @@
 # end
 #   can not be omitted
 
-from base import Mainsystem, SubsystemBase, InstructionBase, split
+from base import SubsystemBase, InstructionBase, split
 from tobf import Tobf
 from subsystems import Subsystem_ConstSet, Subsystem_Consts, Subsystem_Enums, Subsystem_Vars, Subsystem_Code
 from sub_mem import Subsystem_Memory
@@ -72,28 +72,34 @@ if __name__ == "__main__":
     import sys
 
     verbose = False
+    fast = False
+    tmps = ["tmp"]
     args = sys.argv[1:]
 
     if len(args) == 0:
-        print("py tobf source")
+        print("py tobf source [options]")
         exit(0)
 
     src = args[0]
 
-    if len(args) > 1 and args[1] == "-v":
-        args = args[1]
-        verbose = True
+    for arg in args[1:]:
+        if arg == "-v":
+            verbose = True
+        if arg == "-f":
+            fast = True
+        if arg == "-no_tmp":
+            tmps = []
 
-    compiler = Tobf()
-    compiler.install_subsystem(Subsystem_Enums())
-    compiler.install_subsystem(Subsystem_Consts())
-    compiler.install_subsystem(Subsystem_ConstSet())
-    compiler.install_subsystem(Subsystem_Vars())
-    compiler.install_subsystem(Subsystem_Code())
-    compiler.install_subsystem(Subsystem_Memory())
-    compiler.install_subsystem(Subsystem_FastMem())
-    compiler.install_subsystem(Subsystem_Str())
-    compiler.install_subsystem(Subsystem_Stk())
+    compiler = Tobf(sys.stdout, list(range(len(tmps))), tmps, fast)
+    compiler.install_subsystem("enums", Subsystem_Enums)
+    compiler.install_subsystem("consts", Subsystem_Consts)
+    compiler.install_subsystem("constset", Subsystem_ConstSet)
+    compiler.install_subsystem("vars", Subsystem_Vars)
+    compiler.install_subsystem("code", Subsystem_Code)
+    compiler.install_subsystem("mem", Subsystem_Memory)
+    compiler.install_subsystem("fastmem", Subsystem_FastMem)
+    compiler.install_subsystem("str", Subsystem_Str)
+    compiler.install_subsystem("stk", Subsystem_Stk)
 
     compiler.compile_file(src, verbose)
 

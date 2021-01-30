@@ -276,6 +276,54 @@ def word_label(src: List[str], name: str, i: int) -> int:
 
     return r
 
+def remove_local_names(src: List[str]):
+    current_base = ""
+    i = 0
+    while i < len(src):
+        tkn = src[i]
+
+        if is_local_label(src[i]):
+            src[i] = current_base + tkn
+        elif tkn == ":" and i + 1 < len(src) and not is_local_label(src[i + 1]):
+            current_base = src[1]
+            i += 1
+
+        i += 1
+
+def skip_anonymous_function(src: List[str], i: int) -> int:
+    if src[i] != "{":
+        return i
+
+    d = 0
+    for i in range(i + 1, len(src)):
+        if src[i] == "}":
+            if d == 0:
+                return i + 1
+            d -= 1
+        elif src[i] == "{":
+            d += 1
+    
+    return i
+
+def remove_anonymous_functions(src: List[str], dst: List[List[str]], from_: int = 0, to_: int = None, prefix: str = "erp_func_") -> List[str]:
+    if to_ == None:
+        to_ = len(src)
+
+    for i in range(from_, to_):
+        tkn = src[i]
+
+        if tkn == "{":
+            j = skip_anonymous_function(src, i)
+
+            src2 = remove_anonymous_functions(src.copy(), dst, i + 1, j - 1)
+
+            src[i] = f"'{prefix + len(dst)}"
+            dst.push = src2
+            src.pop(*range(i + 1, j))
+
+    print(" ".join(src))
+    return src
+
 
 def load(file: io.TextIOWrapper, loaded: List[str] = []) -> List[str]:
     s = file.read()
@@ -302,7 +350,30 @@ def compile(src: List[str]):
     last_label = 255
     rstack_size = 16
     dstack_size = 32
+    anon_func_prefix = "erp_func_"
 
+    # print(" ".join(src))
+
+    # has_main = main_exists(src)
+    # anon_funcs = []
+    # remove_local_names(src)
+    # src = remove_anonymous_functions(src, anon_funcs, anon_func_prefix)
+
+    # if has_main:
+    #      anons = []
+    # else:
+    #     anons = ["{"]
+    #     src = ["}", "drop"] + src
+
+    # for i in range(len(anon_funcs)):
+    #     anons += [":", f"{anon_func_prefix}{i}"] + anon_funcs[i] + [";"]
+
+    # src = anons + src
+
+    # print("-" * 70)
+    # print(" ".join(src))
+
+    # sys.exit(0)
     vars = get_vars(src)
     pointable_vars = get_pointable_vars(src, vars)
     arrays = get_arrays(src)
@@ -318,24 +389,59 @@ def compile(src: List[str]):
     if mem_size > max_mem_size or rstack_size > max_rstack_size or dstack_size > max_dstack_size:
         raise Exception("tryed to use many memory cells")
 
-    def append_push(v, stack="d", immediate=False, copy=False):
+    def append_push(v, stack="d", copy=False):
         stack_name = rstack_name if stack == "r" else dstack_name
 
         if copy:
-            dst.append(f"{stack_name}:@copypush {v}")
-        else:
             dst.append(f"{stack_name}:@push {v}")
+        else:
+            dst.append(f"{stack_name}:@push -{v}")
         
     def append_push_imm(v, stack="d"):
-        append_push(v, stack, True)
+        append_push(v, stack=stack, copy=True)
     def append_pop(v, stack="d"):
         stack_name = rstack_name if stack == "r" else dstack_name
 
         dst.append(f"{stack_name}:@pop {v}")
 
+    def fetch_native_vliw(src: str, i: int) -> List[str]:
+        vliw = []
+
+        for i in range(i, len(src)):
+            tkn = src[i]
+
+            if tkn in ["swap", "dup", "rot", "drop", "+", "-"]:
+                vliw.append(tkn)
+            elif tkn == "inc":
+                vliw.append("1+")
+            elif tkn == "dec":
+                vliw.append("1-")
+            elif tkn == "getc":
+                vliw.append(",")
+            elif tkn == "putc":
+                vliw.append(".")
+            elif tkn.startswith("'") and tkn.endswith("'") and len(tkn) == 3:
+                vliw.append(str(ord(tkn[1])))
+            elif tkn.isdigit():
+                vliw.append(tkn)
+            else:
+                break
+
+        return vliw
+    def append_native_vliw(vliw: List[str]):
+        dst.append(f"{dstack_name}:@calc " + " ".join(vliw))
+
     i = 0
     while i < len(src):
         tkn = src[i]
+
+        # vliw = fetch_native_vliw(src, i)
+
+        # if len(vliw) > 1:
+        #     append_native_vliw(vliw)
+
+        #     i += len(vliw)
+        #     continue
 
         if tkn in micro_instructions:
             vliw = Vliw.fetch_vliw(src, i, stack_on_registers, micro_instructions)
@@ -408,12 +514,11 @@ def compile(src: List[str]):
             append_pop("z")
             append_pop("y")
             append_pop("x")
-            dst.append(f"copy x b")
-            dst.append(f"ifelse b e")
+            dst.append(f"ifelse x e")
             append_push("y")
-            dst.append(f"else b e")
+            dst.append(f"else x e")
             append_push("z")
-            dst.append(f"endifelse b e")
+            dst.append(f"endifelse x e")
         elif tkn == "drop":
             dst.append(f"{dstack_name}:@pop")
         elif tkn in ["dup", "swap", "rot"]:
@@ -489,7 +594,14 @@ def compile(src: List[str]):
             elif tkn[1:] in pointable_vars:
                 append_push_imm(f"{pointable_vars.index(tkn[1:])}")
             else:
-                append_push_imm(f"{word_label(src, tkn[1:], i)}")
+                v = word_label(src, tkn[1:], i)
+
+                if i + 1 < len(src) and src[i + 1] == "jmp":
+                    dst.append(f"erp:@goto set {v}")
+                    dst.append(f"erp:@at {label(src, i + 1)}")
+                    i += 1
+                else:
+                    append_push_imm(f"{v}")
         elif tkn.startswith("@"):
             append_pop("x")
             dst.append(f"{mem_name}:@r_copy x y")
@@ -555,14 +667,78 @@ def compile(src: List[str]):
 
     return dst
 
+def remove_local_names(src: List[str]):
+    current_base = ""
+    i = 0
+    while i < len(src):
+        tkn = src[i]
+
+        if is_local_label(tkn):
+            src[i] = current_base + tkn
+        elif tkn.startswith("'") and (not (tkn.endswith("'") and len(tkn) == 3)) and is_local_label(tkn[1:]):
+            src[i] = "'" + current_base + tkn[1:]
+        elif tkn == ":" and i + 1 < len(src) and not is_local_label(src[i + 1]):
+            current_base = src[i + 1]
+            i += 1
+
+        i += 1
+
+def main_exists(src: List[str]) -> bool:
+    for i in range(len(src) - 1):
+        if src[i] == ":" and src[i + 1] == "main":
+            return True
+
+    return False
+
+def skip_anonymous_function(src: List[str], i: int) -> int:
+    if src[i] != "{":
+        return i
+
+    d = 0
+    for i in range(i + 1, len(src)):
+        if src[i] == "}":
+            if d == 0:
+                return i + 1
+            d -= 1
+        elif src[i] == "{":
+            d += 1
+    
+    return i
+
+def remove_anonymous_functions(src: List[str], dst: List[List[str]], prefix: str = "erp_func_") -> List[str]:
+    i = 0
+    while i < len(src):
+        tkn = src[i]
+
+        if tkn == "{":
+            j = skip_anonymous_function(src, i)
+
+            src2 = remove_anonymous_functions(src[i + 1:j - 1], dst, prefix)
+
+            src[i] = f"'{prefix}{len(dst)}"
+            dst.append(src2)
+
+            for k in range(j - 1, i, -1):
+                src.pop(k)
+
+        i += 1
+
+    return src
+
 def optimize(src: List[str]):
     i = 0
     while i < len(src):
-        if i + 1 < len(src):
-            if src[i] == "1" and  src[i + 1] == "+":
-                src = src[:i] + ["inc"] + src[i + 1:]
-            elif src[i] == "1" and  src[i + 1] == "-":
-                src = src[:i] + ["dec"] + src[i + 1:]
+        tkn = src[i]
+
+        if tkn == "1" and i + 1 < len(src):
+            if src[i + 1] == "+":
+                src[i]  = "inc"
+                src.pop(i + 1)
+            elif src[i + 1] == "-":
+                src[i]  = "dec"
+                src.pop(i + 1)
+        elif tkn.startswith("'") and tkn.endswith("'") and len(tkn) == 3:
+            src[i] = str(ord(tkn[1]))
 
         i += 1
 

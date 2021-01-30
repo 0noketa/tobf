@@ -18,7 +18,7 @@
     is_val _c _lbl
 
     sub _c c
-    bool_not c
+    not c
     b:@goto_if c  set _lbl
 
     auto_label
@@ -26,7 +26,7 @@
     is_var c
     is_val _lbl
 
-    bool_not c
+    not c
     b:@goto_if c  set _lbl
 
     auto_label

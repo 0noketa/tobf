@@ -14,13 +14,21 @@
 #   instructions: (id (" " val)* "\n")*
 #   val: digits | "'" | "'" char | id
 # instructions:
+# bool io_var
+# not io_var
+#   required tmps: 1
+#   io_var becomes to 1 or 0.
+# bool -in_var ...out_vars
+# not -in_var ...out_vars
+#   add/sub/move 1 or 0 to out_vars. breaks in_var.
 # bool io_var ...out_vars
-#   if io_var is not 0, io_var becomes to 1. and copies io_var to out_vars.
 # not io_var ...out_vars
-# bool_not io_var ...out_vars
-#   if io_var is not 0, io_var becomes to 0. or else to 1. besides copies io_var to out_vars.
+#   required tmps: 2
+#   add/sub/move 1 or 0 to out_vars.
 # set imm ...out_vars_with_sign
-#   every destination can starts with "+" or "-", they means add or sub instead of set
+#   every destination can starts with "+" or "-", they means add or sub instead of set.
+#   this description is avairable for similar meaning as arguments of instructions below:
+#     bool, not, copy, move
 #   aliases_with_inplicit_signs:
 #     add imm ...out_vars
 #     sub imm ...out_vars
@@ -40,19 +48,29 @@
 # nor in_var ...out_vars
 #   similer to eq. breaks in_var
 # move in_var ...out_vars_with_sign
-#   in_var becomes to 0
+#   in_var becomes to 0.
+#   if out_vars contains in_var, requires 1 tmp. 
 #   aliases_with_implicit_signs:
 #     moveadd in_var ...out_vars
 #     movesub in_var ...out_vars
+# copy in_sub ...out_subs_with_sign
+#   if sub was arraylike, move entire array. or move members.
 # copy in_var ...out_vars_with_sign
+#   required tmps: 1
 #   aliases_with_inplicit_signs:
 #     copyadd in_var ...out_vars
 #     copysub in_var ...out_vars
+# copy in_sub ...out_subs_with_sign
+#   if sub was arraylike, copy entire array. or copy members.
 # resb imm
 #   declare size of static memory. default=number of vars. works when no subsystem was loaded.
 #   will be replaced.
 # tmp addr
-#   changes address of implicit it. not implemented.
+#   register variable to implicit workspace.
+#   variable should be stored zero.
+#   variable should not be used until unregistered.
+# tmp -addr
+#   unregister variable from implicit workspace.
 # load subsystem_name ...args
 #   loads subsystem after reserved vars and subsystems already loaded
 # loadas alias_name subsystem_name ...args
@@ -70,7 +88,11 @@
 # ifelse cond_var work_var
 #   work_var carries run_else flag
 #   cond_var is avarable until "else"
+# ifelse cond_var +work_var
+#   notices work_var as zero
 # else cond_var work_var
+# else cond_var -work_var
+#   notices work_var as not touched
 # endifelse cond_var work_var
 # ifgt var0 var1 tmp_var
 #   skips block if var1 > var0.
@@ -100,232 +122,270 @@
 #   before bf, copies io_vars to bf_memory_area.
 #   after bf, moves bf_memory_area to variables.
 # include_bf file_name
-#   bf code uses only 1 byte. useless.
+#   bf code uses only 1 cell.
 # include_bf file_name io_var
-#   runs at selected var. useless.
+#   runs at selected var.
+# include_arrowfuck file_name mem_width mem_height ...io_vars
+#   injects compiled ArrowFuck code.
+# include_4dchess file_name mem_size0 mem_size1 mem_size2 mem_size3 ...io_vars
+#   injects compiled 4DChess code.
 # include_c file_name stack_size function_name ...in_vars out_var
 #   uses C function.
 # end
 #   can not be omitted
 
+from __future__ import annotations
+from typing import cast, Union, List, Tuple, Set, Dict, Type
 import io
-from base import Mainsystem, SubsystemBase, InstructionBase, split, split_list, separate_sign, calc_small_pair, MacroProc
+import statistics
+from base import Subsystem, split, split_list, separate_sign, calc_small_pair, MacroProc
+
+from brainfuck_with_mdm import ArrowFuck, FDChess
 from bfa import Bfa
 from c2bf import C2bf
 
 
-class Tobf(Mainsystem):
-    def __init__(self):
-        self._vars = []
-        self._reserved = -1
-        self._subsystems = {}
-        self._loaded_subsystems = {}
-        self._idt = 0
-        self._size = 0
-        self._newest_subsystem_name = ""
-        self._concatnative_macros = {}
+class Tobf:
+    def __init__(self,
+            dst: io.TextIOWrapper,
+            tmps: List[int] = [0],
+            vars: List[str] = ["tmp"],
+            fast=False):
+        """fast: if True, does not generate "++[>++<-]" for initialization. just generate "++++"\n
+        """
+        self.dst_ = dst
+        self.tmps_ = tmps.copy()
+        self.base_vars_ = vars.copy()
+        self.vars_ = vars.copy()
+        # generates fast code (does not use "++[>++<-]" styled initialization)
+        self.fast_ = fast
+        self.subsystem_templates_: Dict[str, Subsystem] = {}
+        self.subsystem_instances_: List[Subsystem] = []
+        self.subsystem_instances_by_name_: Dict[str, Subsystem] = {}
+        self._concatnative_macros: Dict[str, str] = {}
 
-    def reserve(self, size):
-        """manually selects size of variable area\n
-        can be reselected when no subsystem was loaded."""
+    def fast(self) -> bool:
+        return self.fast_
 
-        if len(self._loaded_subsystems.keys()) > 0:
-            return False
+    def install_subsystem(self, name: str, subsystem: Type[Subsystem]):
+        self.subsystem_templates_[name] = subsystem
 
-        self._reserved = size
+    def addressof_instance(self, name) -> int:
+        if not (name in self.subsystem_instances_by_name_.kets()):
+            raise Exception(f"subsystem {name} is not instantiated")
 
-        return True
+        return self.subsystem_instances_by_name_[name].offset(0)
 
-    def install_subsystem(self, subsystem: SubsystemBase):
-        self._subsystems[subsystem.name()] = subsystem
+    def addressof_free_area(self, size: int) -> int:
+        """malloc() for subsystems"""
+        if len(self.subsystem_instances_) > 0:
+            self.subsystem_instances_.sort(key=(lambda x: x.offset(0)))
 
-    # maybe broken. do not unload if subsystem is not placed at the last.
-    # and currently no subsystem can calculate its size without assigned baseaddress.
-    def offsetof_next_subsystem(self) -> int:
-        if len(self._loaded_subsystems) == 0:
-            return self._reserved if self._reserved != -1 else len(self._vars) + 1
+        base = len(self.vars_)
 
-        next = 0
-        for key in self._loaded_subsystems.keys():
-            sub = self._loaded_subsystems[key]
-            next2 = sub.offset() + sub.size()
+        for sub in self.subsystem_instances_:
+            addr = sub.offset(0)
 
-            if next < next2:
-                next = next2
+            if addr - base >= size:
+                return base
 
-        return next
+            base = addr + sub.size()
 
-    def offsetof_subsystem(self, alias:str) -> int:
-        subsystem = self.subsystem_by_alias(alias)
+        return base
 
-        return subsystem.offset()
-
-    def subsystem_by_name(self, name) -> SubsystemBase:
-        """returns a subsystem"""
-        if not (name in self._subsystems.keys()):
+    def get_template(self, name) -> Type[Subsystem]:
+        """returns subsystem template"""
+        if not (name in self.subsystem_templates_.keys()):
             raise Exception(f"subsystem {name} is not installed")
 
-        return self._subsystems[name]
+        return self.subsystem_templates_[name]
 
-    def subsystem_by_alias(self, name) -> SubsystemBase:
-        """returns an instance of subsystem"""
+    def get_instance(self, name) -> Subsystem:
+        """returns subsystem instance"""
 
-        if name == "" and self._newest_subsystem_name != "":
-            name = self._newest_subsystem_name
-
-        if not (name in self._loaded_subsystems.keys()):
+        if not (name in self.subsystem_instances_by_name_.keys()):
             raise Exception(f"subsystem aliased as {name} is not loaded")
 
-        return self._loaded_subsystems[name]
+        return self.subsystem_instances_by_name_[name]
 
-    def put_load(self, name:str, args:list, alias=""):
-        if not (name in self._subsystems.keys()):
-            raise Exception(f"subsystem {name} is not installed")
-
+    def load(self, name:str, args:list, alias=""):
         if alias == "":
             alias = name
 
-        if alias in self._loaded_subsystems.keys():
+        if not (name in self.subsystem_templates_.keys()):
+            raise Exception(f"subsystem {name} is not installed")
+
+        if alias in self.subsystem_instances_by_name_.keys():
             raise Exception(f"subsystem aliased as {alias} is already loaded.")
 
-        subsystem_base = self.subsystem_by_name(name)
-        subsystem = subsystem_base.copy(alias)
-        subsystem.load(self.offsetof_next_subsystem(), self)
+        template = self.get_template(name)
+        instance = template(self, alias, args=args, get_addr=self.addressof_free_area)
 
-        self._loaded_subsystems[alias] = subsystem
-        self._newest_subsystem_name = alias
+        self.subsystem_instances_.append(instance)
+        self.subsystem_instances_by_name_[alias] = instance
 
-        if subsystem.has_ins("init", args):
-            subsystem.put("init", args)
-
-        return True
-
-    def put_unload(self, name: str, args: list) -> bool:
-        subsystem = self.subsystem_by_alias(name)
+    def unload(self, name: str, args: list) -> bool:
+        subsystem = self.get_instance(name)
 
         if subsystem == None:
             return False
 
-        if subsystem.has_ins("clean", args):
-            subsystem.put("clean", args)
+        subsystem.put_clean(args)
 
-        self._loaded_subsystems.pop(name)
+        self.subsystem_instances_by_name_.pop(name)
+        self.subsystem_instances_.remove(subsystem)
 
-        self._newest_subsystem_name = ""
+    """int: addr\n
+       str, (\+|-|)(/'.*|\d+/): imm\n
+       str, (\+|-|)(#\d+): addr\n
+       str, (\+|-|)([\w_][\w\d_]*(?::[\w_][\w\d_]*)): name\n
+    """
+    def is_signed(self, value) -> bool:
+        """is valid signed(intent dscripted) value"""
+        return (type(value) == str and len(value) > 1
+            and value[0] in ["+", "-"])
+    def is_val(self, value: Union[int, str]) -> bool:
+        """is valid immediate"""
+        if type(value) == int:
+            return True
 
-        return True
-    def put(self, s):
-        print("  " * self._idt + s)
-
-    def uplevel(self):
-        self._idt += 1
-    def downlevel(self):
-        self._idt = self._idt - 1 if self._idt > 0 else 0
-
-    def begin_global(self, addr:int):
-        self.put(">" * int(addr))
-
-    def end_global(self, addr:int):
-        self.put("<" * int(addr))
-
-    def with_addr(self, addr:int, s:str):
-        self.begin_global(addr)
-        self.put(s)
-        self.end_global(addr)
-
-    def put_at(self, addr:int, s:str):
-        self.with_addr(addr, s)
-
-    def put_with_every(self, addrs:list, s:str):
-        used = []
-        for addr in addrs:
-            if addr in used:
-                continue
-
-            used.append(addr)
-            self.with_addr(addr, s)
-
-    def has_var(self, name:str) -> bool:
-        return name in self._vars
-    def addressof_var(self, name:str) -> int:
-        return int(self._vars.index(name) + 1)
-
-    def is_var(self, value) -> bool:
         if type(value) != str:
+            raise Exception(f"bad arg: {value}: {type(value)}")
+
+        sign, value = separate_sign(value)
+        if value.isdigit() or len(value) > 0 and value[0] == "'":
+            return True
+        elif ":" in value:
+            sub, value2 = value.split(":", maxsplit=1)
+
+            sub = self.get_instance(sub)
+
+            return sub.has_const(value2) or sub.has_enum(value2)
+        else:
             return False
+
+    def is_val_or_input(self, value) -> bool:
+        return value == "input" or self.is_val(value)
+
+    def is_var(self, value: Union[str, int]) -> bool:
+        if type(value) == int:
+            return True
+        elif type(value) != str:
+            raise Exception(f"bad arg: {value}: {type(value)}")
         elif self.is_signed(value):
             sign, value2 = separate_sign(value)
 
             return self.is_var(value2)
         elif ":" in value:
             sub_name, name = split(value, sep=":", maxsplit=1)
-            sub = self.subsystem_by_alias(sub_name)
+            sub = self.get_instance(sub_name)
 
             return sub.has_var(name)
+        elif value.startswith("#") and value[1:].isdigit():
+            return True
         else:
             return self.has_var(value)
 
-    def is_sub(self, value, typ="") -> bool:
-        if not (value in self._loaded_subsystems.keys()):
+    def has_var(self, name: str) -> bool:
+        return (name in self._vars) or name.startswith("#")
+
+    def is_sub(self, value: str, typ="") -> bool:
+        sign, value = separate_sign(value)
+
+        if not (value in self.subsystem_instances_by_name_.keys()):
             return False
 
         if typ == "":
             return True
 
-        sub = self.subsystem_by_alias(value)
+        sub = self.get_instance(value)
 
-        return sub.basename() == typ
+        return isinstance(sub, self.get_template(typ))
 
-    def addressof(self, value) -> int:
-        if type(value) != str:
-            return value
+    def addressof(self, value: Union[str, int], allow_tmps=True) -> int:
+        if type(value) == int:
+            r = value
+        elif type(value) != str:
+            raise Exception(f"bad arg: {value}: {type(value)}")
         elif self.is_signed(value):
             sign, value2 = separate_sign(value)
-            return self.addressof(value2)
+
+            if self.is_signed(value2):
+                raise Exception(f"invalid value: {value}")
+
+            r = self.addressof(value2)
+        elif self.is_sub(value):
+            r = self.addressof_instance(value)
         elif ":" in value:
             sub_name, name = split(value, sep=":", maxsplit=1)
-            sub = self.subsystem_by_alias(sub_name)
+            sub = self.get_instance(sub_name)
 
-            return sub.addressof(name)
+            r = sub.addressof(name)
+        elif value.startswith("#") and value[1:].isdigit():
+            r = int(value[1:])
         elif self.has_var(value):
-            return self.addressof_var(value)
+            r = self.vars_.index(value)
         elif value.isdigit():
-            return int(value)
+            raise Exception(f"can not get address of immediate:{value}")
         else:
             raise Exception(f"failed to get address of {value}")
+
+        if not allow_tmps and (r in self.tmps_):
+            raise Exception(f"workspace con not be used")
+
+        return r
 
     def byteof(self, value, byte=False) -> int:
         return self.valueof(value, byte=True)
 
-    def valueof(self, value, byte=False) -> int:
-        if type(value) != str:
+    def valueof(self, value: Union[int, str], byte=False) -> int:
+        if type(value) == int:
             return value
+        elif type(value) != str:
+            raise Exception(f"bad arg: {value}: {type(value)}")
         elif ":" in value:
             sub_name, name = split(value, sep=":", maxsplit=1)
-            sub = self.subsystem_by_alias(sub_name)
+            sub = self.get_instance(sub_name)
 
             return sub.valueof(name)
-        elif self.is_val(value):
-            return super().valueof(value)
+        elif value == "'":
+            return 32
+        elif value.startswith("'"):
+            return ord(value[1])
+        elif value.isdigit():
+            return int(value)
         else:
+            raise Exception(f"bad value")
             return value
 
-    def variablesof(self, name: str) -> list:
-        if self.is_sub(name):
-            return self.subsystem_by_alias(name)._vars.copy()
+    def put(self, s):
+        self.dst_.write(s + "\n")
 
-    def begin(self, i):
-        self.put(">" * int(i + 1))
+    def put_at(self, addr: Union[int, str], s:str):
+        if not self.is_var(addr):
+            raise Exception(f"{addr}: {type(addr)} is not valid address")
 
-    def end(self, i):
-        self.put("<" * int(i + 1))
-
-    def with_var(self, i, s):
-        self.begin(i)
+        self.put(">" * self.addressof(addr))
         self.put(s)
-        self.end(i)
+        self.put("<" * self.addressof(addr))
 
-    def inc_or_dec(self, c, n):
+    def put_at_every(self, addrs: List[Union[str, int]], s: str, unique=True):
+        used = []
+
+        addrs = self.get_addresses(addrs)
+        for sign, addr in addrs:
+            if unique:
+                if addr in used:
+                    continue
+
+                used.append(addr)
+
+            self.put_at(addr, s)
+
+    def has_var(self, name: str) -> bool:
+        return name in self.vars_
+
+    def put_inc_or_dec(self, c: str, n: int):
         for i in range(n // 16):
             self.put(c * 8 + " " + c * 8)
 
@@ -338,150 +398,360 @@ class Tobf(Mainsystem):
         else:
             self.put(c * m)
 
-    def inc(self, n):
-        self.inc_or_dec("+", n)
+    def put_inc(self, n):
+        self.put_inc_or_dec("+", n)
 
-    def dec(self, n):
-        self.inc_or_dec("-", n)
+    def put_dec(self, n):
+        self.put_inc_or_dec("-", n)
 
-    def clear(self, v):
-        self.clear_vars([v], True)
+    def get_addresses(self, addrs: List[Union[int, str]], unique: bool = False, sorted: bool = True) -> List[Tuple[str, int]]:
+        """returns list of (sign, addr)\n
+           ignores "print" and "input"
+        """
 
-    def clear_vars(self, out_vars:list, force=False, without=[]):
+        r = []
+        addrs = addrs.copy()
+
+        i = 0
+        while i < len(addrs):
+            addr = addrs[i]
+
+            if addr in ["input", "print"]:
+                i += 1
+                continue
+
+            sign, addr = separate_sign(addr)
+
+            if self.is_sub(addr):
+                sub = self.get_instance(addr)
+                sub_addrs = [f"{sign}{sub.name()}:{name}" for name in sub.get_vars()]
+
+                addrs = addrs[:i] + sub_addrs + addrs[i + 1:]
+
+                continue
+
+            addr = self.addressof(addr)
+
+            if not (unique or (addr in r)):
+                r.append((sign, addr))
+
+            i += 1
+
+        if sorted:
+            r.sort(key=(lambda x: x[1]))
+
+        return r
+    def get_nearest_tmp(self, tmps: List[int], targets: List[Union[str, int]]) -> int:
+        if len(tmps) == 0:
+            raise Exception(f"requires more workspace")
+
+        if len(targets) == 0:
+            return tmps[0]
+
+        targets = list(map(self.addressof, targets))
+        target = statistics.mean(targets)
+        distances = [(tmp, abs(tmp - target)) for tmp in tmps]
+
+        distances.sort(key=(lambda x: x[1]))
+
+        return distances[0][0]
+    def get_unsigned_target(self, targets: List[Union[str, int]]) -> int:
+        """any breakable destination as temporary"""
+
+        tmps = [addr for sign, addr in self.get_addresses(targets) if sign == ""]
+
+        return self.get_nearest_tmp(tmps, targets)
+
+    def put_clear(self,
+            out_addrs: Union[Union[str, int], List[Union[str, int]]],
+            without: List[Union[str, int]] = [],
+            ignore_signed=False):
+        if type(out_addrs) != list:
+            self.put_clear([out_addrs], True)
+            return
+
         cleared = [self.addressof(i) for i in without]
 
-        for out_var in out_vars:
-            sign, out_var = separate_sign(out_var)
-
-            if not force and sign != "":
-                    continue
-
-            addr = self.addressof(out_var)
-
+        for addr in out_addrs:
+            sign, addr = separate_sign(addr)
             if addr in cleared:
+                continue
+
+            if ignore_signed and sign != "":
                 continue
 
             cleared.append(addr)
 
-            self.with_addr(addr, "[-]")
+            self.put_at(addr, "[-]")
 
+    def make_signed_addr(self, sign: str, addr: Union[str, int]) -> str:
+        if type(addr) == int:
+            addr = "#" + str(addr)
 
-    def put_move(self, in_addr, out_vars):
+        return sign + addr
+
+    def is_sortable_args(self, args: List[Union[str, int]]) -> bool:
+        return ("input" not in args) and ("output" not in args)
+
+    def has_self_reassignment(self, in_addr: int, out_addrs: List[Union[str, int]]) -> bool:
+        for addr in out_addrs:
+            sign, addr = separate_sign(addr)
+            addr = self.addressof(addr)
+
+            if in_addr == addr:
+                return True
+
+        return False
+
+    def put_move(self, in_addr: Union[int, str], out_addrs: List[Union[int, str]], as_bool=False, tmps: List[int] = None, append=True):
+        """as_bool: carries just once\n
+           append: if False, increment becomes decrement\n
+        """
+        if tmps == None:
+            tmps = self.tmps_
+
+        if self.is_sub(in_addr):
+            self.put_move_array(in_addr, out_addrs, tmps)
+            self.put_move_record(in_addr, out_addrs, tmps)
+
+            return
+
         in_addr = self.addressof(in_addr)
+        out_addrs = self.get_addresses(out_addrs)
+        out_addrs = [self.make_signed_addr(sign, addr) for sign, addr in out_addrs]
 
-        self.clear_vars(out_vars)
+        if self.has_self_reassignment(in_addr, out_addrs):
+            if len(tmps) == 0:
+                raise Exception(f"[move from to itself] requires workspace")
 
-        self.with_addr(in_addr, "[")
+            tmp = self.get_nearest_tmp(tmps, out_addrs)
 
-        for out_var in out_vars:
-            sign, out_var = separate_sign(out_var)
-            out_addr = self.addressof(out_var)
+            self.put_at(in_addr, "[")
+            self.put_at(tmp, "+")
+            self.put_at(in_addr, "-]")
 
+            in_addr = tmp
+
+        self.put_clear(out_addrs, without=[in_addr], ignore_signed=True)
+
+        self.put_at(in_addr, "[")
+
+        for out_addr in out_addrs:
+            sign, out_addr = separate_sign(out_addr)
+            
             if in_addr == out_addr:
                 raise Exception(f"move from and to {in_addr}")
 
-            self.with_addr(out_addr, "-" if sign == "-" else "+")
+            self.put_at(out_addr, "-" if (sign == "-") == append else "+")
 
-        self.with_addr(in_addr, "-]")
-
-    def move_global(self, in_addr, out_addrs):
-        for out_addr in out_addrs:
-            self.with_addr(out_addr, "[-]")
-
-        self.moveadd_global(in_addr, out_addrs)
-
-    def moveadd_global(self, in_addr, out_addrs):
-        self.with_addr(in_addr, "[")
-
-        for out_addr in out_addrs:
-            self.with_addr(out_addr, "+")
-
-        self.with_addr(in_addr, "-]")
-
-    def load_it(self, addr):
-        addr = self.addressof(addr)
-
-        self.with_addr(addr, "[")
-        self.put("+")
-        self.with_addr(addr, "-]")
-
-    def store_it(self, out_addrs):
-        self.clear_vars(out_addrs)
-
-        self.put("[")
-
-        for out_addr in out_addrs:
-            if type(out_addr) == str:
-                sign, out_addr = separate_sign(out_addr)
-                addr = self.addressof(out_addr)
-            else:
-                sign = ""
-                addr = out_addr
-
-            self.with_addr(addr, "-" if sign == "-" else "+")
-
-        self.put("-]")
-
-    def put_cmd(self, value, sign = ""):
-        """simple commands for "set" instruction"""
-        if value == "input":
-            self.put(",")
-        elif value == "print":
-            self.put(".")
+        if as_bool:
+            self.put_at(in_addr, "[-]]")
         else:
-            if type(value) == str:
-                value = self.valueof(value)
+            self.put_at(in_addr, "-]")
 
-            if sign == "-":
-                self.dec(value)
+    def put_copy(self, in_addr: Union[int, str], out_addrs: List[Union[int, str]], tmps: List[int] = None):
+        if tmps == None:
+            tmps = self.tmps_
+
+        if len(tmps) == 0:
+            raise Exception(f"tryed to copy. but no workspace avairable")
+
+        if self.is_val(in_addr):
+            in_addr = self.valueof(in_addr)
+            tmp = self.get_nearest_tmp(tmps, [in_addr] + out_addrs)
+
+            self.put_move(in_addr, [f"+#{tmp}"])
+            self.put_move(tmp, [f"+#{in_addr}"] + out_addrs)
+        elif self.is_var(in_addr):
+            in_addr = self.addressof(in_addr)
+            tmp = self.get_nearest_tmp(tmps, [in_addr] + out_addrs)
+
+            self.put_move(in_addr, [f"+#{tmp}"])
+            self.put_move(tmp, [f"+#{in_addr}"] + out_addrs)
+        elif self.is_sub(in_addr):
+            self.put_move_array(in_addr, out_addrs, tmps, copy=True)
+            self.put_move_record(in_addr, out_addrs, tmps, copy=True)
+
+    def put_move_record(self, in_addr: str, out_addrs: List[Union[int, str]], tmps: List[int] = None, copy = False):
+        """currently in_addr should be name."""
+
+        if not self.is_sub(in_addr):
+            raise Exception(f"{in_addr} is not a record")
+
+        sub = self.get_instance(in_addr)
+
+        for v in sub.readable_vars():
+            addr = sub.addressof(v)
+
+            dsts = []
+            for dst in out_addrs:
+                if not self.is_sub(dst):
+                    raise Exception(f"can not copy record to variable")
+
+                dst_sign, dst = separate_sign(dst)
+                dst_sub = self.get_instance(dst)
+
+                if v not in dst_sub.writable_vars():
+                    continue
+
+                # avoid to break copoyed array by aliases of any index
+                if sub.is_readable_array() and dst_sub.is_writable_array():
+                    continue
+
+                dst_addr = dst_sub.addressof(v)
+                dsts.append(f"{dst_sign}#{dst_addr}")
+
+            if len(dsts):
+                if copy:
+                    self.put_copy(addr, dsts, tmps)
+                else:
+                    self.put_move(addr, dsts, tmps)
+
+    def put_move_array(self, in_addr: str, out_addrs: List[Union[int, str]], tmps: List[int] = None, copy = False):
+        """currently in_addr should be name."""
+
+        if not self.is_sub(in_addr):
+            raise Exception(f"{in_addr} is not an array")
+
+        sub = self.get_instance(in_addr)
+
+        if sub.is_readable_array():
+            for i in range(sub.array_size()):
+                addr = sub.addressof(str(i))
+
+                dsts = []
+                for dst in out_addrs:
+                    if not self.is_sub(dst):
+                        raise Exception(f"can not copy array to variable")
+
+                    dst_sign, dst = separate_sign(dst)
+                    dst_sub = self.get_instance(dst)
+
+                    if not dst_sub.is_writable_array() or i >= dst_sub.array_size():
+                        continue
+
+                    dst_addr = dst_sub.addressof(str(i))
+                    dsts.append(f"{dst_sign}#{dst_addr}")
+
+                if len(dsts):
+                    if copy:
+                        self.put_copy(addr, dsts, tmps)
+                    else:
+                        self.put_move(addr, dsts, tmps)
+
+    def put_print_or_input(self, addrs: List[Union[str, int]], print=False, tmps: List[int] = []):
+        tmp = -1
+
+        if len(list(filter(self.is_val, addrs))) > 0:
+            if print:
+                var_addrs = list(filter(self.is_var, addrs))
+                tmp = self.get_nearest_tmp(tmps, var_addrs)
             else:
-                self.inc(value)
+                raise Exception(f"unknown instruction [input imm]")
 
-    def put_set(self, value, args: list, addressof_tmp=0):
+        current_value = 0
+
+        for addr in addrs:
+            sign, addr = separate_sign(addr)
+
+            if print:
+                if self.is_val(addr):
+                    v = self.valueof(addr)
+                    d = v - current_value
+                    o = "+" if d >= 0 else "-"
+
+                    self.put_at(tmp, (o * abs(d)) + ".")
+
+                    current_value = v
+                elif self.is_sub(addr):
+                    sub = self.get_instance(addr)
+
+                    if not sub.is_readable_array():
+                        raise Exception(f"non-printable object was passed to [print]")
+
+                    for i in range(sub.array_size()):
+                        self.put_at(sub.addressof(str(i)), ".")
+                else:
+                    self.put_at(addr, ".")
+            else:
+                def print_(sign: str, addr: int):
+                    if sign == "":
+                        self.put_at(addr, ",")
+                    else:
+                        if len(tmps) == 0:
+                            raise Exception(f"tryed to add input but no workspace avairable")
+
+                        tmp = self.get_nearest_tmp(tmps, [addr])
+                        self.put_at(tmp, ",")
+                        self.put_move(tmp, [f"{sign}#{addr}"])
+
+                if self.is_var(addr):
+                    print_(sign, self.addressof(addr))
+                elif self.is_sub(addr):
+                    sub = self.get_instance(addr)
+
+                    if not sub.is_writable_array():
+                        raise Exception(f"non-writable object was passed to [input]")
+
+                    for i in range(sub.array_size()):
+                        print_(sign, sub.addressof(str(i)))
+
+        if current_value != 0:
+            self.put_at(tmp, "[-]")
+
+    def put_set(self, value: Union[str, int], out_addrs: List[Union[str, int]], tmps: List[int] = []):
+        if value in ["input", "print"]:
+            self.put_print_or_input(out_addrs, print=(value == "print"), tmps=tmps)
+
+            return
+
+        self.put_clear(out_addrs, ignore_signed=True)
+
         n = 1
         m = self.valueof(value)
+        tmp = -1
 
-        if not (m in ["input", "print"]):
-            n = int(m)
-            n, m = calc_small_pair(n, len(args))
-            value = m
+        if m == 0:
+            return
 
-            self.clear_vars(args)
+        if not self.fast_ and len(tmps) > 0:
+            if type(m) != int:
+                raise Exception(f"{type(m)}{m} <={value}")
+            n, m = calc_small_pair(m, len(out_addrs))
+            tmp = self.get_nearest_tmp(tmps, out_addrs)
 
-        if n > 1 and n * m * len(args) <= n + 3 + m * len(args):
-            value = int(n * m)
-            n = 1
-
-
-        if n > 1:
-            self.put_at(addressof_tmp, "+" * n)
-            self.put_at(addressof_tmp, "[")
-            self.uplevel()
-
-        for name in args:
-            sign, name = separate_sign(name)
-            addr = self.addressof(name)
-
-            self.begin_global(addr)
-            self.put_cmd(value, sign)
-            self.end_global(addr)
+            if n > 1 and n * m * len(out_addrs) <= n + 3 + m * len(out_addrs):
+                m = int(n * m)
+                n = 1
 
         if n > 1:
-            self.downlevel()
-            self.put_at(addressof_tmp, "-]")
+            self.put_at(tmp, ("+" * n) + "[")
 
-    def put_invoke(self, name:str, args:list):
+        for addr in out_addrs:
+            sign, addr = separate_sign(addr)
+            addr = self.addressof(addr)
+            o = "-" if sign == "-" else "+"
+
+            self.put_at(addr, o * m)
+
+        if n > 1:
+            self.put_at(tmp, "-]")
+
+    def put_invoke(self, name: str, args: List[Union[str, int]], tmps: List[int] = None):
+        if tmps == None:
+            tmps = self.tmps_
+
         if ":" in name:
             sub_name, name = name.split(":", maxsplit=1)
 
-            sub = self.subsystem_by_alias(sub_name)
+            sub = self.get_instance(sub_name)
 
             if sub == None:
                 raise Exception(f"subsystem {sub_name} is not loaded")
             if not sub.has_ins(name, args):
                 raise Exception(f"{sub.name()} hasnt {name}")
 
-            return sub.put(name, args)
+            return sub.put(name, args, tmps)
 
         # aliases
         if name in ["inc", "dec"]:
@@ -541,89 +811,115 @@ class Tobf(Mainsystem):
 
             return True
 
-        if name == "resb":
-            size = int(args[0])
-            self.reserve(size)
+        if name == "is_tmp":
+            for arg in args:
+                addr = self.addressof(arg)
+
+                if addr not in self.tmps_:
+                    raise Exception(f"type check failed: {arg} should be workspace")
+
+            return True
+
+        if name == "tmp":
+            for arg in args:
+                sign, arg = separate_sign(arg)
+                addr = self.addressof(arg)
+
+                if sign == "-":
+                    self.tmps_.remove(addr)
+                else:
+                    self.tmps_.append(addr)
 
             return True
 
         if name == "load":
-            self.put_load(args[0], args[1:])
+            self.load(args[0], args[1:])
 
             return True
 
         if name == "loadas":
-            self.put_load(args[1], args[2:], args[0])
+            self.load(args[1], args[2:], args[0])
 
             return True
 
         if name == "unload":
-            self.put_unload(args[0], args[1:])
+            self.unload(args[0], args[1:])
 
             return True
 
         if name == "swap":
-            self.load_it(args[0])
+            if len(tmps) == 0:
+                raise Exception(f"[swap] requires 1 workspace")
 
+            tmp = self.get_nearest_tmp(tmps, args)
             addr0 = self.addressof(args[0])
             addr1 = self.addressof(args[1])
 
-            self.put_at(addr1, "[")
-            self.put_at(addr0, "+")
-            self.put_at(addr1, "-]")
-
-            self.put("[")
-            self.put_at(addr1, "+")
-            self.put("-]")
+            self.put_move(addr0, [f"+#{tmp}"])
+            self.put_move(addr1, [f"+#{addr0}"])
+            self.put_move(tmp, [f"+#{addr1}"])
 
             return True
 
-        if name == "bool":
-            self.clear_vars(args[1:])
+        if name in ["bool", "not"]:
+            sign, addr = separate_sign(args[0])
+            addr = self.addressof(addr)
 
-            self.load_it(args[0])
-            self.put("[")
+            if sign == "-" and not self.has_self_reassignment(addr, args[1:]):
+                if name == "bool":
+                    self.put_move(addr, args[1:], as_bool=True)
+                else:
+                    self.put_set("1", args[1:])
+                    self.put_move(addr, args[1:], as_bool=True, append=False)
 
-            self.put_with_every([self.addressof(arg) for arg in args], "+")
+                return True
 
-            self.put("[-]]")
+            tmp = self.get_nearest_tmp(tmps, args)
+            tmps.remove(tmp)
 
-            return True
+            tmp2 = -1
+            if len(args) > 1:
+                tmp2 = self.get_nearest_tmp(tmps, args)
+            tmps.append(tmp)
 
-        if name in ["bool_not", "not"]:
-            addr = self.addressof(args[0])
+            self.put_clear(args[1:], ignore_signed=True)
 
-            self.put("+")
-            self.put_at(addr, "[")
-            self.put_at(0, "-")
-            self.put_at(addr, "[-]]")
-
-            self.clear_vars(args, without=[args[0]])
-
-            self.put("[")
-            self.put_with_every([self.addressof(arg) for arg in args], "+")
-            self.put("-]")
-
+            if name == "bool":
+                if len(args) == 1:
+                    self.put_move(addr, [f"+#{tmp}"])
+                    self.put_move(tmp, [f"+#{addr}"], as_bool=True)
+                else:
+                    self.put_move(addr, [f"+#{tmp}", f"+#{tmp2}"])
+                    self.put_move(tmp, args[1:], as_bool=True)
+                    self.put_move(tmp2, [f"+#{addr}"])
+            else:
+                if len(args) == 1:
+                    self.put_move(addr, [f"+#{tmp}"])
+                    self.put_at(addr, "+")
+                    self.put_move(tmp, [f"+#{addr}"], as_bool=True)
+                else:
+                    self.put_move(addr, [f"+#{tmp}", f"+#{tmp2}"])
+                    self.put_move(tmp, [f"+#{addr}"])
+                    self.put_at(tmp, "+")
+                    self.put_move(tmp2, [f"+#{tmp}"], as_bool=True)
+                    self.put_move(tmp, args[1:])
+    
             return True
 
         if name == "eq":
-            import sys
-            v = self.valueof(args[0])
-            sys.stderr.write(f"eq {v}\n")
+            sign, value = separate_sign(args[0])
 
-            for arg in args[1:]:
-                addr = self.addressof(arg)
+            if self.is_val(value):
+                v = self.valueof(value)
 
-                self.put("+")
+                for arg in args[1:]:
+                    addr = self.addressof(arg)
+                    tmp = self.get_nearest_tmp(tmps, [addr])
 
-                self.put_at(addr, ("-" * v))
-                self.put_at(addr, "[")
-                self.put("-")
-                self.put_at(addr, "[-]]")
-
-                self.put("[")
-                self.put_at(addr, "+")
-                self.put("-]")
+                    self.put_at(tmp, "+")
+                    self.put_at(addr, ("-" * v))
+                    self.put_move(addr, [f"-#{tmp}"], as_bool=True)
+                    self.put_move(tmp, [f"+#{addr}"])
 
             return True
 
@@ -632,30 +928,25 @@ class Tobf(Mainsystem):
 
             for arg in args[1:]:
                 addr = self.addressof(arg)
+                tmp = self.get_nearest_tmp(tmps, [addr0, addr])
 
-                self.put_at(addr, "[")
-                self.put("+")
-                self.put_at(addr, "-]")
+                self.put_move(addr, tmp)
 
                 self.put_at(addr0, "[")
-                self.put_at(0, "-")
+                self.put_at(tmp, "-")
                 if name == "copyeq" or len(args) > 2:
                     self.put_at(addr, "+")
                 self.put_at(addr0, "-]")
 
                 if name == "copyeq" or len(args) > 2:
-                    self.put_at(addr, "[")
-                    self.put_at(addr0, "+")
-                    self.put_at(addr, "-]")
+                    self.put_move(addr, addr0)
 
                 self.put_at(addr, "+")
 
-                self.put("[")
-                self.put_at(addr, "-")
-                self.put("[-]]")
+                self.put_move(tmp, [f"-#{addr}"], as_bool=True)
 
             if name == "moveeq" or len(args) > 2:
-                self.clear(addr0)
+                self.put_clear(addr0)
 
             return True
 
@@ -667,35 +958,26 @@ class Tobf(Mainsystem):
 
             for arg in args[1:]:
                 addr = self.addressof(arg)
+                tmp = self.get_nearest_tmp(tmps, [addr0, addr])
 
-                # move v?  it
-                # move v0  +it v?
+                # move v?  bool(it)
+                # move v0  +bool(it) bool(v?)
                 # move v?  v0
                 # if it  inc v?
 
-                self.put_at(addr, "[")
-                self.put("+")
-                self.put_at(addr, "[-]]")
+                self.put_move(addr, [f"+#{tmp}"], as_bool=True)
 
-                self.put_at(addr0, "[")
-                self.put("+")
-                self.put_at(addr, "+")
-                self.put_at(addr0, "[-]]")
+                self.put_move(addr0, [f"+#{tmp}", f"+#{addr}"], as_bool=True)
+                self.put_move(addr, [f"+#{tmp}"], as_bool=True)
 
-                self.put_at(addr, "[")
-                self.put_at(addr0, "+")
-                self.put_at(addr, "-]")
+                self.put_move(addr, [f"+#{addr0}"])
 
                 if name == "nor":
                     self.put_at(addr, "+")
 
-                    self.put("[")
-                    self.put_at(addr, "-")
-                    self.put("-]")
+                    self.put_move(tmp, [f"-#{addr}"])
                 else:
-                    self.put("[")
-                    self.put_at(addr, "+")
-                    self.put("-]")
+                    self.put_move(tmp, [f"+#{addr}"])
 
             self.put_at(addr0, "-")
 
@@ -709,21 +991,19 @@ class Tobf(Mainsystem):
 
             for arg in args[1:]:
                 addr = self.addressof(arg)
+                tmp = self.get_nearest_tmp(tmps, [addr0, addr])
 
                 # breaks args[0]
 
-                self.put_at(addr, "[")
-                self.put("+")
-                self.put_at(addr, "[-]]")
+                self.put_move(addr, [f"+#{tmp}"], as_bool=True)
 
                 if name == "nand":
                     self.put_at(addr, "+")
 
-                self.put("[")
-                self.put_at(addr0, "[")
-                self.put_at(addr, "+" if name == "and" else "-")
-                self.put_at(addr0, "[-]]")
-                self.put("-]")
+                o = "+" if name == "and" else "-"
+                self.put_at(tmp, "[")
+                self.put_move(addr0, [f"{o}#{addr}"], as_bool=True)
+                self.put_at(tmp, "-]")
 
             return True
 
@@ -755,35 +1035,30 @@ class Tobf(Mainsystem):
                 for ins in inss:
                     ins2, *prefix = ins
 
-                    self.put_invoke(ins2, prefix + args2)
+                    self.put_invoke(ins2, prefix + args2, tmps)
 
             return True
 
         if name == "set":
-            self.put_set(args[0], args[1:])
+            self.put_set(args[0], args[1:], tmps)
 
             return True
 
         if name == "copy":
-            # move to it
-            self.load_it(args[0])
-
-            # copy and restore
-            self.store_it(args[1:] + ["+" + args[0]])
+            self.put_copy(args[0], args[1:], tmps)
 
             return True
 
 
         if name == "move":
-            self.put_move(args[0], args[1:])
+            self.put_move(args[0], args[1:], tmps)
 
             return True
 
         if name in ["if", "while"]:
             addr = self.addressof(args[0])
 
-            self.with_addr(addr, "[")
-            self.uplevel()
+            self.put_at(addr, "[")
 
             return True
 
@@ -807,17 +1082,15 @@ class Tobf(Mainsystem):
                 j = i - base
                 base = i
 
-                self.with_addr(addr, "-" * j + "[")
+                self.put_at(addr, "-" * j + "[")
 
-            self.uplevel()
 
             return True
 
         if name == "endifnotin":
             addr = self.addressof(args[0])
 
-            self.downlevel()
-            self.with_addr(addr, "[-]" + "]" * (len(args) - 1))
+            self.put_at(addr, "[-]" + "]" * (len(args) - 1))
 
             return True
 
@@ -825,9 +1098,8 @@ class Tobf(Mainsystem):
             sign, v = separate_sign(args[0])
             addr = self.addressof(v)
 
-            self.downlevel()
 
-            self.with_addr(addr,
+            self.put_at(addr,
                 "]" if name == "endwhile"
                 else "-]" if sign == "-"
                 else "[-]]")
@@ -839,9 +1111,8 @@ class Tobf(Mainsystem):
             s_else, v_else = separate_sign(args[1])
             a_else = self.addressof(v_else)
 
-            self.with_addr(a_else, "+" if s_else == "+" else "[-]+")
-            self.with_addr(a_then, "[")
-            self.uplevel()
+            self.put_at(a_else, "+" if s_else == "+" else "[-]+")
+            self.put_at(a_then, "[")
 
             return True
 
@@ -851,11 +1122,9 @@ class Tobf(Mainsystem):
             a_then = self.addressof(v_then)
             a_else = self.addressof(v_else)
 
-            self.downlevel()
-            self.with_addr(a_else, "-" if s_else == "-" else "[-]")
-            self.with_addr(a_then, "-]" if s_then == "-" else "[-]]")
-            self.with_addr(a_else, "[")
-            self.uplevel()
+            self.put_at(a_else, "-" if s_else == "-" else "[-]")
+            self.put_at(a_then, "-]" if s_then == "-" else "[-]]")
+            self.put_at(a_else, "[")
 
             return True
 
@@ -863,8 +1132,7 @@ class Tobf(Mainsystem):
             sign, v = separate_sign(args[1])
             addr = self.addressof(v)
 
-            self.downlevel()
-            self.with_addr(addr, "-]" if sign == "-" else "[-]]")
+            self.put_at(addr, "-]" if sign == "-" else "[-]]")
 
             return True
 
@@ -880,25 +1148,23 @@ class Tobf(Mainsystem):
             a_right = self.addressof(args[1])
             a_tmp = self.addressof(args[2])
 
-            self.with_addr(a_tmp, "[-]")
-            self.with_addr(a_left, "[")
-            self.uplevel()
+            self.put_at(a_tmp, "[-]")
+            self.put_at(a_left, "[")
 
-            self.with_addr(a_right, "[")
-            self.with_addr(a_tmp, "+")
-            self.with_addr(0, "+")
-            self.with_addr(a_right, "-]")
+            self.put_at(a_right, "[")
+            self.put_at(a_tmp, "+")
+            self.put_at(0, "+")
+            self.put_at(a_right, "-]")
 
-            self.with_addr(a_tmp, "[")
-            self.with_addr(a_right, "+")
-            self.with_addr(a_tmp, "-]")
+            self.put_at(a_tmp, "[")
+            self.put_at(a_right, "+")
+            self.put_at(a_tmp, "-]")
 
-            self.with_addr(a_tmp, "+")
-            self.with_addr(0, "[")
-            self.with_addr(a_tmp, "-")
-            self.with_addr(0, "[-]]")
-            self.with_addr(a_tmp, "[[-]")
-
+            self.put_at(a_tmp, "+")
+            self.put_at(0, "[")
+            self.put_at(a_tmp, "-")
+            self.put_at(0, "[-]]")
+            self.put_at(a_tmp, "[[-]")
 
             return True
 
@@ -907,20 +1173,32 @@ class Tobf(Mainsystem):
             a_right = self.addressof(args[1])
             a_tmp = self.addressof(args[2])
 
-            self.downlevel()
+            self.put_at(a_left, "[-]+")
+            self.put_at(a_tmp, "[-]]")
 
-            self.with_addr(a_left, "[-]+")
-            self.with_addr(a_tmp, "[-]]")
-
-            self.with_addr(a_right, "-")
-            self.with_addr(a_left, "-]")
-            self.with_addr(a_right, "[-]")
+            self.put_at(a_right, "-")
+            self.put_at(a_left, "-]")
+            self.put_at(a_right, "[-]")
 
             return True
 
-        if name == "include_bf":
+        if name in ["include_bf", "include_arrowfuck", "include_4dchess"]:
+            args0 = args
+
+            clean = True
+            mem_size = [1, 1, 1, 1]
+
+            if len(args) and args[0] == "fast":
+                clean = False
+                args = args[1:]
+
+            for i in range(4):
+                if len(args) > 1 and args[1].isdigit():
+                    mem_size[i] = int(args[1])
+                    args = args[:1] + args[2:]
+
             if len(args) < 1:
-                raise Exception("[include_bf/0] is not implemented")
+                raise Exception(f"[{name}/{len(args0)}] is not implemented")
 
             try:
                 with io.open(args[0]) as bff:
@@ -928,22 +1206,33 @@ class Tobf(Mainsystem):
             except Exception:
                 raise Exception(f"failed to open {args[0]}")
 
-            if len(args) > 1 and args[1].isdigit():
-                mem_size = int(args[1])
-                vs = args[2:]
+            if name == "include_arrowfuck":
+                src = io.StringIO(bf)
+                dst = io.StringIO()
 
-                if len(vs) > mem_size:
-                    raise Exception("variables [include_bf] passed can not be stored to bf memory area.")
-            else:
-                vs = args[1:]
+                mem_size = ArrowFuck(src, dst, mem_size[:2]).compile()
+                bf = dst.getvalue()
 
-                if len(vs) > 0:
-                    mem_size = len(vs)
-                else:
-                    mem_size = 1
+            if name == "include_4dchess":
+                src = io.StringIO(bf)
+                dst = io.StringIO()
+
+                mem_size = FDChess(src, dst, mem_size[:4]).compile()
+                bf = dst.getvalue()
+
+
+            if len(args[1:]) > mem_size:
+                raise Exception("variables [include_bf] passed can not be stored to bf memory area.")
+
+            vs = args[1:]
+
+            if mem_size < len(vs):
+                mem_size = len(vs)
 
             if mem_size <= 1 and len(vs) == 0:
-                self.put_at(0, bf)
+                tmp = tmps[0] if len(tmps) else self.addressof_free_area(1)
+
+                self.put_at(tmp, bf + "[-]")
 
                 return True
 
@@ -967,26 +1256,24 @@ class Tobf(Mainsystem):
 
                     return True
 
-            bf_ptr = self.offsetof_next_subsystem()
+            bf_ptr = self.addressof_free_area(mem_size)
 
             for i in range(len(vs)):
                 addr = self.addressof(vs[i])
 
-                self.put_at(addr, "[")
-                self.put_at(bf_ptr + i, "+")
-                self.put_at(addr, "-]")
+                self.put_move(addr, [f"#{bf_ptr + i}"])
 
             self.put_at(bf_ptr, bf)
 
             for i in range(len(vs)):
                 addr = self.addressof(vs[i])
 
-                self.put_at(bf_ptr + i, "[")
-                self.put_at(addr, "+")
-                self.put_at(bf_ptr + i, "-]")
+                self.put_move(bf_ptr + i, [f"#{addr}"])
 
-            for i in range(len(vs), mem_size):
-                self.put_at(bf_ptr + i, "[-]")
+            if clean:
+                mem_size -= len(vs)
+
+                self.put_at(bf_ptr + len(vs), ("[-]>" * mem_size) + ("<" * mem_size))
 
             return True
 
@@ -999,7 +1286,7 @@ class Tobf(Mainsystem):
             c_func_name = args[2]
             c_func_args_and_result = args[3:]
             c_func_args = c_func_args_and_result[:-1]
-            c_base_ptr = self.offsetof_next_subsystem()
+            c_base_ptr = self.addressof_nextsubsystem()
 
             shared_vars = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
 
@@ -1017,9 +1304,7 @@ class Tobf(Mainsystem):
                 if self.is_var(arg):
                     addr = self.addressof(arg)
 
-                    self.put_at(addr, "[")
-                    self.put_at(c_base_ptr + i, "+")
-                    self.put_at(addr, "-]")
+                    self.put_move(addr, [f"+#{c_base_ptr + i}"])
                 else:
                     v = self.valueof(arg)
                     self.put_at(c_base_ptr + i, "+" * v)
@@ -1028,24 +1313,24 @@ class Tobf(Mainsystem):
 
             addr = self.addressof(c_func_args_and_result[-1])
 
-            self.put_at(c_base_ptr, "[")
-            self.put_at(addr, "+")
-            self.put_at(c_base_ptr, "-]")
+            self.put_move(c_base_ptr, [f"+#{addr}"])
 
             return True
 
-
         raise Exception(f"unknown instruction {name}")
 
-    def compile_instruction(self, src):
+    def compile_instruction(self, src: Union[str, List[str]]):
         if type(src) == str:
             src = split(src)
 
         name, *args = src
 
-        return self.put_invoke(name, args)
+        return self.put_invoke(name, args, self.tmps_)
 
-    def compile_all(self, src:list, comments=False):
+    def compile_all(self, src: list, comments=False):
+        import sys
+        sys.stderr.write(" ".join(self.vars_) + "\n")
+
         for i in src:
             if comments or i[0] == "bf":
                 print(" ".join(i) if type(i) == list else i)
@@ -1055,17 +1340,14 @@ class Tobf(Mainsystem):
 
             self.compile_instruction(i)
 
-        self.put("[-]")
-
     def compile_file(self, file_name, comments=False):
         size, vars, macros = Tobf.read_file(file_name)
 
-        self._vars = vars
-        self.reserve(size)
+        self.vars_ = self.base_vars_ + vars
         self.compile_all(macros["main"].codes, comments)
 
     @staticmethod
-    def read_file(file:str) -> tuple:
+    def read_file(file:str) -> Tuple[int, List[str], Dict[str, MacroProc]]:
         """returns (size, vars, macros)"""
 
         size = -1
@@ -1118,6 +1400,6 @@ class Tobf(Mainsystem):
             raise e
 
         if size == -1:
-            size = len(vs) + 1
+            size = len(vs)
 
         return (size, vs, ms)

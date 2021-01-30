@@ -1,6 +1,8 @@
 
 # a to-bf compiler
 
+from __future__ import annotations
+from typing import cast, Union, List, Tuple, Set, Dict, Type, Callable
 import io
 
 src_extension = "txt"
@@ -56,64 +58,6 @@ def calc_small_pair(n, vs):
     return max(x, y), min(x, y)
 
 
-class Mainsystem:
-    def is_val(self, value) -> bool:
-        """is valid immediate"""
-        sign, value = separate_sign(value)
-        return (type(value) == int
-            or type(value) == str
-                and (value.isdigit()
-                    or len(value) > 0 and value[0] == "'"))
-    def is_var(self, value) -> bool:
-        """is valid variable"""
-        return False
-    def is_signed(self, value) -> bool:
-        """is valid signed value"""
-        return (type(value) == str and len(value) > 1
-            and value[0] in ["+", "-"])
-    def is_sub(self, value, typ="") -> bool:
-        """is valid subsystem"""
-        return False
-    def has_var(self, name:str) -> bool:
-        """is valid variable of main"""
-        return False
-    def addressof(self, name:str) -> int:
-        return 0
-    def valueof(self, value:str) -> int:
-        """constant"""
-        if not self.is_val(value):
-            return -1024
-
-        sign, value = separate_sign(value)
-
-        if value[0] == "'":
-            return ord(value[1]) if len(value) > 1 else 32
-        else:
-            return int(value)
-    def valuesof(self, name:str) -> int:
-        """constant"""
-        return 0
-    def variablesof(self, name:str) -> list:
-        """list of variables in a subsystem"""
-        return []
-    def offsetof_subsystem(self, alias:str) -> int:
-        return 0
-    def subsystem_by_name(self, name):
-        """returns SubsystemBase"""
-        return SubsystemBase()
-    def subsystem_by_alias(self, name):
-        """returns SubsystemBase"""
-        return SubsystemBase()
-    def put(self, s:str):
-        pass
-    def put_at(self, addr:int, s:str):
-        """>>>something<<<"""
-        pass
-    def put_invoke(self, name:str, args:list):
-        pass
-    @staticmethod
-    def read_file(file:str) -> tuple:
-        pass
 
 class InstructionBase:
     def __init__(self, _name, _least_argc = 0):
@@ -124,60 +68,37 @@ class InstructionBase:
         return self._name
     def least_argc(self):
         return self._least_argc
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main, args:list):
         pass
 
 class SubsystemBase:
     """module-like extension that can be specialized like classes"""
-    def __init__(self, _name:str, _instructions:dict={}, _consts={}, _enums=[], _vars:list=[], _size=-1):
-        self._loaded = False
-        self._offset = 0
-        self._main: Mainsystem = None
-        self._basename = ""
-        self._name = _name
-        self._instructions = _instructions.copy()
-        self._consts = _consts.copy()
-        self._enums = _enums.copy()
-        self._fixed = False
-        self._vars = _vars.copy()
-        self._size = _size
-    def copy(self, _name:str, _to=None):
-        if _to == None:
-            r = type(self)(_name)
-        else:
-            r = _to(_name)
-        r._basename = self._name if self._basename == "" else self._basename
-        r._main=self._main
-        r._instructions=self._instructions
-        r._consts=self._consts
-        r._enums=self._enums
-        r._fixed=self._fixed
-        r._vars=self._vars
-        r._size=self._size
-        return r
-    def load(self, offset:int, main:Mainsystem):
-        if self._loaded:
-            return False
-
-        self._offset = offset
-        self._loaded = True
+    def __init__(self, main, name: str):
+        self._address = cast(int, None)
         self._main = main
-
-        return True
+        self._name = name
+        self._instructions: Dict[str, InstructionBase] = {}
+        self._consts = {}
+        self._enums = {}
+        self._fixed = False
+        self._vars = []
+        self._size = 0
     def name(self):
         return self._name
-    def basename(self):
-        return self._basename
+    def set_base(self, addr: int):
+        if self._address != None:
+            raise Exception(f"can not move subsystem instance")
+        self._address = addr
     def fix(self, _fixed=True):
         self._fixed = _fixed
-    def resize(self, size:int):
+    def resize(self, size: int):
         if self._fixed:
             raise Exception(f"failed to resize fixed area of {self._name}")
 
         self._size = size
     def has_const(self, name: str) -> bool:
         return name in self._consts.keys()
-    def add_const(self, name: str, value:int) -> bool:
+    def def_const(self, name: str, value:int) -> bool:
         if name.isdigit():
             return False
 
@@ -194,7 +115,7 @@ class SubsystemBase:
         return True
     def has_enum(self, name: str) -> bool:
         return name in self._enums
-    def add_enum(self, name: str) -> bool:
+    def def_enum(self, name: str) -> bool:
         if name.isdigit():
             return False
 
@@ -202,10 +123,25 @@ class SubsystemBase:
             self._enums.append(name)
 
         return True
+    def array_size(self) -> int:
+        """number of elements"""
+        return 0
+    def is_readable_array(self) -> bool:
+        """True if subsystem implements arraylike structure, and allows direct-read."""
+    def is_writable_array(self) -> bool:
+        """True if subsystem implements arraylike structure, and allows direct-write."""
+    def readable_vars(self) -> List[str]:
+        """variables that are allowed direct-read. excludes array indices."""
+        return self._vars.copy()
+    def writable_vars(self) -> List[str]:
+        """variables that are allowed direct-write. excludes array indices."""
+        return self._vars.copy()
+    def vars(self) -> List[str]:
+        return self._vars.copy()
     def has_var(self, name: str) -> bool:
-        return name in self._vars
-    def add_var(self, name: str) -> bool:
-        if self._fixed:
+        return name in self.vars()
+    def def_var(self, name: str) -> bool:
+        if self._fixed and self._size <= len(self._vars):
             raise Exception(f"cant add var to fixed area of {self._name}")
         if name.isdigit():
             return False
@@ -253,7 +189,7 @@ class SubsystemBase:
     def put_skip_left(self):
         """skip left area for this subsystem"""
         self._main.put("<" * self.size())
-    def put(self, name:str, args:list):
+    def put(self, name:str, args:list, tmps: List[int]):
         if name == "init":
             return self.put_init(args)
         if name == "clean":
@@ -269,9 +205,14 @@ class SubsystemBase:
         pass
     def offset(self, n: int = 0):
         """adds base address of this subsystem"""
-        return self._offset + n
+        return self._address + n
     def size(self):
         return len(self._vars) if self._size == -1 else self._size
+
+class Subsystem(SubsystemBase):
+    """interface"""
+    def __init__(self, main, name: str, args: List[str], get_addr: Callable[[int], int]):
+        pass
 
 
 class MacroProc:

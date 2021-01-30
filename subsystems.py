@@ -50,34 +50,42 @@
 #     similer to main instruction. "this" as source.
 
 
+from typing import cast, Union, List, Tuple, Set, Dict, Callable
 import io
-from base import calc_small_pair, src_extension, separate_sign, Mainsystem, SubsystemBase, InstructionBase, MacroProc
+from tobf import Tobf
+from base import calc_small_pair, src_extension, separate_sign, SubsystemBase, InstructionBase, MacroProc
 
 
 class Instruction_DefineConst(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase):
         super().__init__(_name, _least_argc=2)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         v = args[0]
         names = args[1:]
 
         for name in names:
-            self._sub.add_const(name, main.valueof(v))
+            self._sub.def_const(name, main.valueof(v))
 
 class Instruction_IncrementConst(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
+    def __init__(self, _name, _sub: SubsystemBase, _decrement=False):
         super().__init__(_name, _least_argc=1)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+        self._decrement = _decrement
+
+    def put(self, main: Tobf, args:list):
         for name in args:
-            self._sub.replace_const(name, str(int(self._sub.valueof(name)) + 1))
+            if self._decrement:
+                d = -1
+            else:
+                d = 1
+            self._sub.replace_const(name, int(self._sub.valueof(name)) + d)
 
 class Instruction_RedefineConst(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase):
         super().__init__(_name, _least_argc=2)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         v = args[0]
         for name in args[1:]:
             self._sub.replace_const(name, main.valueof(v))
@@ -86,128 +94,109 @@ class Instruction_DefineEnum(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase):
         super().__init__(_name, _least_argc=1)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         for name in args:
-            self._sub.add_enum(name)
+            self._sub.def_enum(name)
 
 class Instruction_DefineVar(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase):
         super().__init__(_name, _least_argc=1)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         for name in args:
-            self._sub.add_var(name)
+            self._sub.def_var(name)
 
 class Instruction_Init(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase, _least_argc=0):
         super().__init__(_name, _least_argc=_least_argc)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         self._sub.put_init(args)
 
 class Instruction_Clean(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase, _least_argc=0):
         super().__init__(_name, _least_argc=_least_argc)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         self._sub.put_clean(args)
 
 class Instruction_Pass(InstructionBase):
     def __init__(self, _name, _sub: SubsystemBase, _least_argc=0):
         super().__init__(_name, _least_argc=_least_argc)
         self._sub = _sub
-    def put(self, main: Mainsystem, args:list):
+    def put(self, main: Tobf, args:list):
         self._sub.put(self._name, args)
 
 class Subsystem_ConstSet(SubsystemBase):
     """constant definitions"""
-    def __init__(self, _name="constset"):
-        super().__init__(_name)
-    def copy(self, name):
-        r = super().copy(name)
-        r.add_ins(Instruction_DefineConst("const", r))
-        r.add_ins(Instruction_DefineEnum("enum", r))
-        return r
+    def __init__(self, main: Tobf, name: str, args: List[str], get_addr: Callable[[int], int]):
+        super().__init__(main, name)
+        self._main = cast(Tobf, self._main)
+
+        self.resize(0)
+        self.set_base(get_addr(0))
+
+        self.add_ins(Instruction_DefineConst("const", self))
+        self.add_ins(Instruction_DefineEnum("enum", self))
 
 class Subsystem_Consts(SubsystemBase):
     """constant definitions"""
-    def __init__(self, _name="consts"):
-        super().__init__(_name)
-    def copy(self, name):
-        r = super().copy(name)
-        r.add_ins(Instruction_DefineConst("def", r))
-        r.add_ins(Instruction_IncrementConst("inc", r))
-        r.add_ins(Instruction_RedefineConst("redef", r))
-        return r
+    def __init__(self, main: Tobf, name: str, args: List[str], get_addr: Callable[[int], int]):
+        super().__init__(main, name)
+        self._main = cast(Tobf, self._main)
+
+        self.resize(0)
+        self.set_base(get_addr(0))
+
+        self.add_ins(Instruction_DefineConst("def", self))
+        self.add_ins(Instruction_IncrementConst("inc", self))
+        self.add_ins(Instruction_IncrementConst("dec", self, decrement=True))
+        self.add_ins(Instruction_RedefineConst("redef", self))
 
 class Subsystem_Enums(SubsystemBase):
     """constant definitions"""
-    def __init__(self, _name="enums"):
-        super().__init__(_name)
-    def copy(self, name):
-        r = super().copy(name)
-        r.add_ins(Instruction_DefineEnum("def", r))
-        return r
+    def __init__(self, main: Tobf, name: str, args: List[str], get_addr: Callable[[int], int]):
+        super().__init__(main, name)
+        self._main = cast(Tobf, self._main)
+
+        self.resize(0)
+        self.set_base(get_addr(0))
+
+        self.add_ins(Instruction_DefineEnum("def", self))
 
 class Subsystem_Vars(SubsystemBase):
     """local variable area"""
-    def __init__(self, _name="vars"):
-        super().__init__(_name)
-    def copy(self, name):
-        r = super().copy(name)
-        r.add_ins(Instruction_Init("init", r, 1))
-        r.add_ins(Instruction_Clean("clean", r, 0))
-        r.add_ins(Instruction_DefineVar("def", r))
-        r.add_ins(Instruction_Pass("set", r, 0))
-        r.add_ins(Instruction_Pass("add", r, 0))
-        r.add_ins(Instruction_Pass("sub", r, 0))
-        r.add_ins(Instruction_Pass("copy", r, 0))
-        r.add_ins(Instruction_Pass("copyadd", r, 0))
-        r.add_ins(Instruction_Pass("copysub", r, 0))
-        r.add_ins(Instruction_Pass("move", r, 0))
-        r.add_ins(Instruction_Pass("moveadd", r, 0))
-        r.add_ins(Instruction_Pass("moveadd", r, 0))
+    def __init__(self, main: Tobf, name: str, args: List[Union[int, str]], get_addr: Callable[[int], int]):
+        super().__init__(main, name)
+        self._main = cast(Tobf, self._main)
 
-        return r
-
-    def put_init(self, args:list):
         if len(args) == 1 and args[0].isdigit():
             self.resize(self._main.valueof(args[0]))
         else:
             for arg in args:
-                self.add_var(arg)
+                self.def_var(arg)
 
-    def put_clean(self, args:list):
+            self.resize(len(self._vars))
+
+        self.set_base(get_addr(self.size()))
+
+        self.add_ins(Instruction_Clean("clean", self, 0))
+        self.add_ins(Instruction_DefineVar("def", self))
+        self.add_ins(Instruction_Pass("set", self, 1))
+        self.add_ins(Instruction_Pass("add", self, 1))
+        self.add_ins(Instruction_Pass("sub", self, 1))
+
+    def put_clean(self, args: List[Union[int, str]]):
         if len(args) == 1 and args[0] == "fast":
             return
 
-        self._main.put(">" * self.offset())
-        self._main.put("[-]>" * self.size())
-        self._main.put("<" * (self.offset() + self.size()))
+        self._main.put_at(self.offset(), ("[-]>" * self.size()) + ("<" * self.size()))
 
-    def put(self, name, args:list):
+    def put(self, name: str, args: List[Union[int, str]], tmps: List[int]):
         if name == "init":
-            self.put_init(args)
             return
         if name == "clean":
-            self.put_init(args)
-            return
-
-        if name in ["move", "moveadd", "movesub", "copy", "copyadd", "copysub"]:
-            vss = args
-
-            if len(vss) == 0:
-                return
-
-            for i in vss:
-                if not self._main.is_sub(i, "vars"):
-                    Exception(f"destinations of [vars:{name}] should be vars")
-                if set(self._vars) <= set(self._main.variablesof(i)):
-                    Exception(f"destinations of [vars:{name}] should be subset of this vars")
-
-            for v in self._vars:
-                self._main.put_invoke(name, [self.name() + ":" + v] + [vs + ":" + v for vs in vss])
-            
+            self.put_clean(args)
             return
 
         name0 = name
@@ -231,30 +220,48 @@ class Subsystem_Vars(SubsystemBase):
             for i in vss:
                 if not self._main.is_sub(i, "vars"):
                     Exception(f"additional destinations of [vars:set] should be vars")
-                if set(self._vars) <= set(self._main.variablesof(i)):
+                if len(set(self._vars) & set(self._main.get_instance(i).writable_vars())) == 0:
                     Exception(f"additional destinations of [vars:set] should have variables in this vars")
 
             vss = [self.name()] + vss
 
             for i in range(self.size()):
                 imm = imms[i]
-                self._main.put_invoke("set", [imm] + [sign + j + ":" + self._vars[i] for j in vss])
+                self._main.put_invoke("set", [imm] + [sign + j + ":" + self._vars[i] for j in vss], tmps)
             
             return
 
         raise Exception(f"unknown instruction [vars:{name0}/{len(args)}] {self.name()}(vars):len={self.size()}")
 
+
 class Subsystem_Code(SubsystemBase):
-    def __init__(self, _name="code"):
-        super().__init__(_name)
+    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], get_addr: Callable[[int], int]):
+        super().__init__(tobf, _name)
+        self._main = cast(Tobf, self._main)
+
         self._macs = {}
-        self._read = False
-    def copy(self, _name):
-        r = super().copy(_name)
-        r._codes = self._macs.copy()
-        r._read = self._read
-        r.add_ins(Instruction_Init("init", r, 1))
-        return r
+        file = args[0] + "." + src_extension
+        size, vs, ms = self._main.read_file(file)
+
+        self.resize(size)
+        self.set_base(get_addr(self.size()))
+
+        for v in vs:
+            self.def_var(v)
+
+        for key in ms.keys():
+            self._macs[key] = ms[key]
+
+            self.add_ins(Instruction_Pass(key, self, len(ms[key].params)))
+
+        self.put("init", [], self._main.tmps_)
+
+        self._codes = self._macs.copy()
+
+        self.add_ins(Instruction_Init("init", self, 1))
+
+    def put_clean(self, args: List[Union[int, str]]):
+        self.put("clean", args)
 
     def make_qname(self, name, params=[], args=[]):
         if name[0] in ["+", "-"]:
@@ -268,39 +275,18 @@ class Subsystem_Code(SubsystemBase):
 
         return sign + name
 
-    def put_init(self, args:list):
-        if self._read:
-            return
-
-        file = args[0] + "." + src_extension
-        size, vs, ms = self._main.read_file(file)
-
-        for v in vs:
-            self.add_var(v)
-
-        for key in ms.keys():
-            self._macs[key] = ms[key]
-
-            self.add_ins(Instruction_Pass(key, self, len(ms[key].params)))
-
-        self._read = True
-
-        self.put("init", [])
-
-        super().put_init(args)
-
     def has_ins(self, name, args):
-        if not self._read and name == "init":
+        if name == "init":
             return True
 
         return name in self._macs.keys()
 
-    def put(self, name, args:list):
-        if not self._read and name == "init":
-            return self.put_init(args)
+    def put(self, name: str, args: List[Union[int, str]], tmps: List[int]):
+        if name == "init" and "init" not in self._macs.keys():
+            return
 
         if not (name in self._macs.keys()):
-            return Exception(f"unknown instruction {name}")
+            return Exception(f"unknown instruction {self.name()}:{name}")
 
         mac = self._macs[name]
 
@@ -330,7 +316,7 @@ class Subsystem_Code(SubsystemBase):
             ins_args = c2[1:]
 
             if ins_name in self._macs.keys():
-                self.put(ins_name, ins_args)
+                self.put(ins_name, ins_args, tmps)
             else:
-                self._main.put_invoke(ins_name, ins_args)
+                self._main.put_invoke(ins_name, ins_args, tmps)
 
