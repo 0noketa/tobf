@@ -1,8 +1,9 @@
 
-loadas dec6 code mod_dec6
-! loadas x | loadas y | loadas z <- vars a b c d e f
+# before compilation, generate mod_dec32.txt with gen_mod_dec.py
+loadas dec code mod_dec32
+! loadas x | loadas y | loadas z <- vars $!dec32_interface
 
-dec6:@set 0 0 0 0 0 1 x
+dec:@set 0 0 0 0 0 0 0 0  0 0 0 0 0 0 0 0  0 0 0 0 0 0 0 0  0 0 0 0 0 0 0 1 x
 
 loadas dec3 code mod_dec3
 loadas n vars a b c
@@ -10,11 +11,11 @@ loadas n vars a b c
 dec3:@readln n
 
 dec3:@while n
-    dec6:@writeln x
+    dec:@writeln x
 
-    dec6:@copy x z
-    dec6:@moveadd y x
-    dec6:@move z y
+    dec:@copy x z
+    dec:@moveadd y x
+    dec:@move z y
 
     dec3:@dec n
 dec3:@endwhile n

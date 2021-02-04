@@ -1,16 +1,9 @@
- f b n t e cf ci cz cb cu cln
+ f b n t e
 
 # i: current number
 # j: rest of numbers
 ! loadas i | loadas j <- vars a b c d e f
 loadas dec code mod_dec6
-
-add 70 cf ci cb cz cu
-add 3 ci
-sub 4 cb
-add 20 cz cu
-sub 5 cu
-add 10 cln
 
 # f: 1 to 3 (includes 3)
 # b: 1 to 5 (includes 5)
@@ -26,14 +19,14 @@ dec:@while j
     ! copy f | sub 3 <- t
     ifelse t +e
     else t -e
-        print cf ci cz cz
+        print 'F 'I 'Z 'Z
         clear n f
     endifelse t -e
 
     ! copy b | sub 5 <- t
     ifelse t +e
     else t -e
-        print cb cu cz cz
+        print 'B 'U 'Z 'Z
         clear n b
     endifelse t -e
 
@@ -41,7 +34,7 @@ dec:@while j
         dec:@write i
     endif n
 
-    print cln
+    print 10
 
     inc b f
 

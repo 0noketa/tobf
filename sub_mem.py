@@ -128,7 +128,7 @@ class Subsystem_Memory(SubsystemBase):
 
         self._main.put("<" * self.offset(size * 2))
 
-    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], get_addr: Callable[[int], int]):
+    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], instantiate: Callable[[int, SubsystemBase], int]):
         super().__init__(tobf, _name)
         self._main = cast(Tobf, self._main)
 
@@ -141,7 +141,7 @@ class Subsystem_Memory(SubsystemBase):
         _size = (_cells + 2) * 2
         self.resize(_size)
 
-        self.set_base(get_addr(self.size()))
+        instantiate(self.size(), self)
 
         self.def_const("size", self._mem_size)
 

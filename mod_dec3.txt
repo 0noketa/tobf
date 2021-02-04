@@ -8,13 +8,13 @@ n m e z
     clear z
 
 :@check v
-    is_var v:a v:b v:c
+    is_var v:c v:b v:a
 
-:@set a b c v
+:@set c b a v
     @check v
-    set a v:a
-    set b v:b
     set c v:c
+    set b v:b
+    set a v:a
 
 :@w_move_str s v
     @check v
@@ -24,53 +24,53 @@ n m e z
 
     s:@drop n
     while n
-        @lsh v
+        @shl v
         copysub z n
         @w_movelowest n +v:f
         s:@drop +n
     endwhile n
 
-:@lsh v
-    @check v
-    move v:b v:a
-    move v:c v:b
-    clear v:c
-:@rsh v
+:@shl v
     @check v
     move v:b v:c
     move v:a v:b
     clear v:a
+:@shr v
+    @check v
+    move v:b v:a
+    move v:c v:b
+    clear v:c
 :@r_copylowest v out
     @check v
     is_var out
-    copy v:c out
+    copy v:a out
 :@r_movelowest v out
     @check v
     is_var out
-    move v:c out
+    move v:a out
 :@w_copylowest in v
     @check v
     is_var in
-    copy in v:c
+    copy in v:a
 :@w_movelowest in v
     @check v
     is_var in
-    move in v:c
+    move in v:a
 
 :@clear v
     @set 0 0 0 v
 :@move x y
     @check x
     @check y
-    move x:a y:a
-    move x:b y:b
     move x:c y:c
+    move x:b y:b
+    move x:a y:a
 :@copy x y
     @check x
     @check y
-    _copy x:a y:a
-    _copy x:b y:b
     _copy x:c y:c
+    _copy x:b y:b
+    _copy x:a y:a
 
  # via e
 :_copyadd x y
@@ -104,44 +104,51 @@ n m e z
         _next x _m _n _f
     endifelse n e
 
-:_inc_c x _m _n _f
-    _inc x _m _n  _f x:c  _inc_b
-:_inc_b x _m _n _f
-    _inc x _m _n  _f x:b  _inc_a
 :_inc_a x _m _n _f
-    _inc x _m _n  _f x:a  _nop2
+    _inc x _m _n  _f x:a  _inc_b
+:_inc_b x _m _n _f
+    _inc x _m _n  _f x:b  _inc_c
+:_inc_c x _m _n _f
+    _inc x _m _n  _f x:c  _nop2
 
 :@inc x
     @check x
-    _inc_c x 9 0 inc
+    _inc_a x 9 0 inc
 :@dec x
     @check x
-    _inc_c x 0 9 dec
+    _inc_a x 0 9 dec
 
 :_copyifgt9 v n e
     _copy v n
     set 9 m
-    ifgt n m e
+    tmp +e
+    ifgt n m
+    tmp -e
+
+:_endifgt9 n e
+    tmp +e
+    endifgt n m
+    tmp -e
 
 :_moveadd_dec _f_sub _f_inc _f_copyadd x y
     @check x
     @check y
-    _f_copyadd x:c y:c
-    _copyifgt9 y:c n e
-        _f_sub 10 y:c
+    _f_copyadd x:a y:a
+    _copyifgt9 y:a n e
+        _f_sub 10 y:a
         _f_inc y:b
-    endifgt n m e
+    _endifgt9 n e
 
     _f_copyadd x:b y:b
     _copyifgt9 y:b n e
         _f_sub 10 y:b
-        _f_inc y:a
-    endifgt n m e
+        _f_inc y:c
+    _endifgt9 n e
 
-    _f_copyadd x:a y:a
-    _copyifgt9 y:a n e
-        _f_sub 10 y:a
-    endifgt n m e
+    _f_copyadd x:c y:c
+    _copyifgt9 y:c n e
+        _f_sub 10 y:c
+    _endifgt9 n e
 
 
 :@moveadd x y
@@ -174,14 +181,14 @@ n m e z
 
 :@read x
     @check x
-    input x:a x:b x:c
-    _copysub3 z x:a x:b x:c
+    input x:c x:b x:a
+    _copysub3 z x:c x:b x:a
 
 :@write0 x
     @check x
-    _copyadd3 z x:a x:b x:c
-    print x:a x:b x:c
-    _copysub3 z x:a x:b x:c
+    _copyadd3 z x:c x:b x:a
+    print x:c x:b x:a
+    _copysub3 z x:c x:b x:a
 
 :@read_until tail x
     @check x
@@ -191,9 +198,9 @@ n m e z
     while n
         add tail n
         sub '0 n
-        move x:b x:a
-        move x:c x:b
-        move n x:c
+        move x:b x:c
+        move x:a x:b
+        move n x:a
 
         input n
         sub tail n
@@ -214,7 +221,7 @@ n m e z
 
 :@write x
     @check x
-    _copy x:a n
+    _copy x:c n
     ifelse n e
         _write_n
         _copy x:b n
@@ -226,7 +233,7 @@ n m e z
         endif n
     endifelse n e
 
-    _copy x:c n
+    _copy x:a n
     _write_n
 
     clear n
@@ -236,17 +243,17 @@ n m e z
     print n
     clear n
 
-# moveadd to :a
+# moveadd to :c
 :_movefold x
     @check x
-    moveadd x:b x:a
-    moveadd x:c x:a
+    moveadd x:b x:c
+    moveadd x:a x:c
 
 :_copyfold x n
     @check x
-    _copyadd x:a n
-    _copyadd x:b n
     _copyadd x:c n
+    _copyadd x:b n
+    _copyadd x:a n
 
 :@if x
     @check x

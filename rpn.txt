@@ -7,7 +7,7 @@ b:@load_callstack 1
 loadas sub consts
 
 # swap them if use large stack
-loadas stack mem 8
+loadas stack stk 8
 loadas out code mod_print
 
 sub:def 100 read

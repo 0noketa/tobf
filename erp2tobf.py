@@ -435,13 +435,13 @@ def compile(src: List[str]):
     while i < len(src):
         tkn = src[i]
 
-        # vliw = fetch_native_vliw(src, i)
+        vliw = fetch_native_vliw(src, i)
 
-        # if len(vliw) > 1:
-        #     append_native_vliw(vliw)
+        if len(vliw) > 1:
+            append_native_vliw(vliw)
 
-        #     i += len(vliw)
-        #     continue
+            i += len(vliw)
+            continue
 
         if tkn in micro_instructions:
             vliw = Vliw.fetch_vliw(src, i, stack_on_registers, micro_instructions)
@@ -627,7 +627,8 @@ def compile(src: List[str]):
     dst.append(f"erp:@end {last_label}")
 
     head = [
-        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e",
+        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e erp2tobf_tmp0 erp2tobf_tmp1",
+        "tmp erp2tobf_tmp0 erp2tobf_tmp1",
         "loadas out code mod_print",
         "loadas in code mod_input",
         "loadas erp code mod_jump"

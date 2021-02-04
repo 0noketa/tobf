@@ -1,0 +1,13 @@
+_ a b c d e
+public a b c
+
+:init n
+    set n a b c d e
+:clean
+    clear a b c d e
+
+:put
+    print a b c d e 10
+
+end
+

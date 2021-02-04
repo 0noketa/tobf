@@ -1,7 +1,6 @@
 n x y z
 loadas in code mod_input
 loadas out code mod_print
-loadas n vars a b c
 
 set 1 x
 

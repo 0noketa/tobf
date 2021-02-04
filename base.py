@@ -82,6 +82,7 @@ class SubsystemBase:
         self._enums = {}
         self._fixed = False
         self._vars = []
+        self._pub_vars = []
         self._size = 0
     def name(self):
         return self._name
@@ -132,15 +133,15 @@ class SubsystemBase:
         """True if subsystem implements arraylike structure, and allows direct-write."""
     def readable_vars(self) -> List[str]:
         """variables that are allowed direct-read. excludes array indices."""
-        return self._vars.copy()
+        return self._pub_vars.copy()
     def writable_vars(self) -> List[str]:
         """variables that are allowed direct-write. excludes array indices."""
-        return self._vars.copy()
+        return self._pub_vars.copy()
     def vars(self) -> List[str]:
         return self._vars.copy()
     def has_var(self, name: str) -> bool:
         return name in self.vars()
-    def def_var(self, name: str) -> bool:
+    def def_var(self, name: str, is_public=True) -> bool:
         if self._fixed and self._size <= len(self._vars):
             raise Exception(f"cant add var to fixed area of {self._name}")
         if name.isdigit():
@@ -148,6 +149,9 @@ class SubsystemBase:
 
         if not (name in self._vars):
             self._vars.append(name)
+
+            if is_public:
+                self._pub_vars.append(name)
 
         return True
     def valueof(self, name: str) -> int:
@@ -211,7 +215,11 @@ class SubsystemBase:
 
 class Subsystem(SubsystemBase):
     """interface"""
-    def __init__(self, main, name: str, args: List[str], get_addr: Callable[[int], int]):
+    def __init__(self,
+            main,
+            name: str,
+            args: List[str],
+            instantiate: Callable[[int, Union[Subsystem, None], Union[List[str], None]], int]):
         pass
 
 

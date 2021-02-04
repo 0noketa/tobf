@@ -1,0 +1,32 @@
+
+loadas x code pub_sub1 '1
+loadas pad1 vars _
+loadas y code pub_sub2 '2
+loadas pad2 vars _
+loadas z code pub_sub1 '3
+
+tmp pad1:_ pad2:_
+
+print x ' y ' z 10
+x:put
+y:put
+z:put
+
+# record copy uses only position-independent public vars
+copy x y z
+
+print x ' y ' z 10
+x:put
+y:put
+z:put
+
+loadas v vars a b c d e
+v:set 1 2 3 4 5
+move v +x +y +z
+
+print x ' y ' z 10
+x:put
+y:put
+z:put
+
+end

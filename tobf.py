@@ -1,18 +1,20 @@
 
 # a to-bf compiler for small programs
 # abi:
-#   pointer: always points address 0 with value 0 at the beggining and the end
-#   memory: temporary, ...vars, dynamic_memory
-#     area of vars has no hidden workspace except address 0. can be used like common-vars in old fortran.
-#     dynamic_memory is optional. nothing exists until initialized manually. and can be cleaned up.
-# linking(not yet):
-#   sequencial or macro-injection.
-#   linkers are required to read only first lines of every source.
+#   dynamic_addressing: none.
+#   pointer: always points address 0 at the beggining and the end
+#   memory: ...vars, ...extensions
+#     area of vars has no hidden workspace excepts default 1 cell at address 0 (can be omitted).
+#   workspaces: [copy] and some instruction require workspaces.
+#     any variable can be workspace.
+#     variables for workspace should be 0 when registered/unregistered.
+#     no workspace can be modified explicitly.
 # syntax:
 #   program: var_decl "\n" instructions "end" "\n"
 #   var_decl: id (" " val)*
-#   instructions: (id (" " val)* "\n")*
-#   val: digits | "'" | "'" char | id
+#   instructions: (qid (" " val)* "\n")*
+#   val: digits | "'" | "'" char | qid
+#   qid: id ":" id | id
 # instructions:
 # bool io_var
 # not io_var
@@ -62,9 +64,6 @@
 #     copysub in_var ...out_vars
 # copy in_sub ...out_subs_with_sign
 #   if sub was arraylike, copy entire array. or copy members.
-# resb imm
-#   declare size of static memory. default=number of vars. works when no subsystem was loaded.
-#   will be replaced.
 # tmp addr
 #   register variable to implicit workspace.
 #   variable should be stored zero.
@@ -95,9 +94,11 @@
 #   notices work_var as not touched
 # endifelse cond_var work_var
 # ifgt var0 var1 tmp_var
+#   required tmps: 1
 #   skips block if var1 > var0.
-#   breaks vars. no variable in args can not be used in this bleck.
+#   breaks vars. no variable in args can not be used in this block.
 # endifgt var0 var1 tmp_var
+#   required tmps: 1
 #   breaks vars.
 # ifnotin cond_var ...imms
 # endifnotin cond_var ...imms
@@ -107,7 +108,19 @@
 # endwhile cond_var
 # every ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
 # ! ins0 ...args0 | ins1 ...args1 | ... <- ...sub_args0 | ...sub_args1 | ...
-#   invoke every instruction with args + sub_args
+#   invoke every instruction with args + every sub_args
+#   ex:
+#       ! a | b x <- c | d
+#     means:
+#       a c
+#       b x c
+#       a d
+#       b x d
+#     does not mean(for usability):
+#       a c
+#       a d
+#       b x c
+#       b x d
 # !!
 #   remove all macro. no purpose.
 # !! name ...
@@ -124,7 +137,7 @@
 # include_bf file_name
 #   bf code uses only 1 cell.
 # include_bf file_name io_var
-#   runs at selected var.
+#   runs at selected var. uses only 1 cell.
 # include_arrowfuck file_name mem_width mem_height ...io_vars
 #   injects compiled ArrowFuck code.
 # include_4dchess file_name mem_size0 mem_size1 mem_size2 mem_size3 ...io_vars
@@ -138,6 +151,8 @@ from __future__ import annotations
 from typing import cast, Union, List, Tuple, Set, Dict, Type
 import io
 import statistics
+import os
+
 from base import Subsystem, split, split_list, separate_sign, calc_small_pair, MacroProc
 
 from brainfuck_with_mdm import ArrowFuck, FDChess
@@ -149,16 +164,23 @@ class Tobf:
     def __init__(self,
             dst: io.TextIOWrapper,
             tmps: List[int] = [0],
-            vars: List[str] = ["tmp"],
+            vars: List[str] = ["__default_tmp"],
+            inc_dirs: List[str] = [],
             fast=False):
-        """fast: if True, does not generate "++[>++<-]" for initialization. just generate "++++"\n
+        """tmps: addresses of workspaces.\n
+           vars: implicitly declared variables.\n
+           inc_dirs: any of include/import/load/... uses these directries\n
+           fast: if True, does not generate "++[>++<-]" for initialization. just generate ">++++<"\n
         """
         self.dst_ = dst
         self.tmps_ = tmps.copy()
         self.base_vars_ = vars.copy()
         self.vars_ = vars.copy()
-        # generates fast code (does not use "++[>++<-]" styled initialization)
         self.fast_ = fast
+
+        self.cwd_ = os.getcwd()
+        self.inc_dirs_ = inc_dirs + [self.cwd_]
+
         self.subsystem_templates_: Dict[str, Subsystem] = {}
         self.subsystem_instances_: List[Subsystem] = []
         self.subsystem_instances_by_name_: Dict[str, Subsystem] = {}
@@ -171,7 +193,7 @@ class Tobf:
         self.subsystem_templates_[name] = subsystem
 
     def addressof_instance(self, name) -> int:
-        if not (name in self.subsystem_instances_by_name_.kets()):
+        if not (name in self.subsystem_instances_by_name_.keys()):
             raise Exception(f"subsystem {name} is not instantiated")
 
         return self.subsystem_instances_by_name_[name].offset(0)
@@ -219,10 +241,21 @@ class Tobf:
             raise Exception(f"subsystem aliased as {alias} is already loaded.")
 
         template = self.get_template(name)
-        instance = template(self, alias, args=args, get_addr=self.addressof_free_area)
 
-        self.subsystem_instances_.append(instance)
-        self.subsystem_instances_by_name_[alias] = instance
+        def instantiate(size: int, instance: Subsystem = None, args: List[str] = None):
+            addr = self.addressof_free_area(size)
+
+            self.subsystem_instances_.append(instance)
+            self.subsystem_instances_by_name_[alias] = instance
+
+            instance.set_base(addr)
+
+            if instance != None:
+                instance.put_init(args)
+
+            return addr
+
+        instance = template(self, alias, args=args, instantiate=instantiate)
 
     def unload(self, name: str, args: list) -> bool:
         subsystem = self.get_instance(name)
@@ -503,12 +536,32 @@ class Tobf:
 
         return False
 
-    def put_move(self, in_addr: Union[int, str], out_addrs: List[Union[int, str]], as_bool=False, tmps: List[int] = None, append=True):
+    def sign_replaced_args(self, args: List[str, int], old_sign: str, new_sign: str) -> List[str]:
+        r = []
+
+        for arg in args:
+            if type(arg) == int:
+                sign = ""
+                arg = f"#{arg}"
+            else:
+                sign, arg = separate_sign(arg)
+
+            if sign == old_sign:
+                sign = new_sign
+        
+            r.append(sign + arg)
+
+        return r
+
+    def put_move(self, in_addr: Union[int, str], out_addrs: List[Union[int, str]], tmps: List[int] = None, as_bool=False, append=True):
         """as_bool: carries just once\n
            append: if False, increment becomes decrement\n
         """
         if tmps == None:
             tmps = self.tmps_
+
+        if self.has_self_reassignment(in_addr, out_addrs):
+            raise Exception(f"[move from to itself]")
 
         if self.is_sub(in_addr):
             self.put_move_array(in_addr, out_addrs, tmps)
@@ -519,18 +572,6 @@ class Tobf:
         in_addr = self.addressof(in_addr)
         out_addrs = self.get_addresses(out_addrs)
         out_addrs = [self.make_signed_addr(sign, addr) for sign, addr in out_addrs]
-
-        if self.has_self_reassignment(in_addr, out_addrs):
-            if len(tmps) == 0:
-                raise Exception(f"[move from to itself] requires workspace")
-
-            tmp = self.get_nearest_tmp(tmps, out_addrs)
-
-            self.put_at(in_addr, "[")
-            self.put_at(tmp, "+")
-            self.put_at(in_addr, "-]")
-
-            in_addr = tmp
 
         self.put_clear(out_addrs, without=[in_addr], ignore_signed=True)
 
@@ -556,21 +597,20 @@ class Tobf:
         if len(tmps) == 0:
             raise Exception(f"tryed to copy. but no workspace avairable")
 
-        if self.is_val(in_addr):
-            in_addr = self.valueof(in_addr)
-            tmp = self.get_nearest_tmp(tmps, [in_addr] + out_addrs)
-
-            self.put_move(in_addr, [f"+#{tmp}"])
-            self.put_move(tmp, [f"+#{in_addr}"] + out_addrs)
-        elif self.is_var(in_addr):
-            in_addr = self.addressof(in_addr)
-            tmp = self.get_nearest_tmp(tmps, [in_addr] + out_addrs)
-
-            self.put_move(in_addr, [f"+#{tmp}"])
-            self.put_move(tmp, [f"+#{in_addr}"] + out_addrs)
-        elif self.is_sub(in_addr):
+        if self.is_sub(in_addr):
             self.put_move_array(in_addr, out_addrs, tmps, copy=True)
             self.put_move_record(in_addr, out_addrs, tmps, copy=True)
+
+            return
+
+        in_addr = self.addressof(in_addr)
+        tmp = self.get_nearest_tmp(tmps, [in_addr] + out_addrs)
+        tmps.remove(tmp)
+
+        self.put_move(in_addr, [f"+#{tmp}"], tmps=tmps)
+        self.put_move(tmp, [f"+#{in_addr}"] + out_addrs, tmps=tmps)
+
+        tmps.append(tmp)
 
     def put_move_record(self, in_addr: str, out_addrs: List[Union[int, str]], tmps: List[int] = None, copy = False):
         """currently in_addr should be name."""
@@ -586,7 +626,7 @@ class Tobf:
             dsts = []
             for dst in out_addrs:
                 if not self.is_sub(dst):
-                    raise Exception(f"can not copy record to variable")
+                    raise Exception(f"can not copy record({in_addr}) to variable({dst})")
 
                 dst_sign, dst = separate_sign(dst)
                 dst_sub = self.get_instance(dst)
@@ -666,11 +706,15 @@ class Tobf:
                 elif self.is_sub(addr):
                     sub = self.get_instance(addr)
 
-                    if not sub.is_readable_array():
+                    if sub.is_readable_array():
+                        for i in range(sub.array_size()):
+                            self.put_at(sub.addressof(str(i)), ".")
+                    elif len(sub.readable_vars()):
+                        for i in sub.readable_vars():
+                            self.put_at(sub.addressof(i), ".")
+                    else:
                         raise Exception(f"non-printable object was passed to [print]")
 
-                    for i in range(sub.array_size()):
-                        self.put_at(sub.addressof(str(i)), ".")
                 else:
                     self.put_at(addr, ".")
             else:
@@ -752,6 +796,11 @@ class Tobf:
                 raise Exception(f"{sub.name()} hasnt {name}")
 
             return sub.put(name, args, tmps)
+
+        if name == "bf":
+            self.put("".join(args))
+
+            return True
 
         # aliases
         if name in ["inc", "dec"]:
@@ -838,7 +887,7 @@ class Tobf:
             return True
 
         if name == "loadas":
-            self.load(args[1], args[2:], args[0])
+            self.load(args[1], args[2:], alias=args[0])
 
             return True
 
@@ -865,12 +914,15 @@ class Tobf:
             sign, addr = separate_sign(args[0])
             addr = self.addressof(addr)
 
+            if sign != "" and len(args) == 1:
+                raise Exception(f"[bool/1] with signed arg is unknown instruction")
+
             if sign == "-" and not self.has_self_reassignment(addr, args[1:]):
                 if name == "bool":
                     self.put_move(addr, args[1:], as_bool=True)
                 else:
                     self.put_set("1", args[1:])
-                    self.put_move(addr, args[1:], as_bool=True, append=False)
+                    self.put_move(addr, self.sign_replaced_args(args[1:], "", "+"), as_bool=True, append=False)
 
                 return True
 
@@ -881,8 +933,6 @@ class Tobf:
             if len(args) > 1:
                 tmp2 = self.get_nearest_tmp(tmps, args)
             tmps.append(tmp)
-
-            self.put_clear(args[1:], ignore_signed=True)
 
             if name == "bool":
                 if len(args) == 1:
@@ -896,13 +946,14 @@ class Tobf:
                 if len(args) == 1:
                     self.put_move(addr, [f"+#{tmp}"])
                     self.put_at(addr, "+")
-                    self.put_move(tmp, [f"+#{addr}"], as_bool=True)
+                    self.put_move(tmp, [f"-#{addr}"], as_bool=True)
                 else:
                     self.put_move(addr, [f"+#{tmp}", f"+#{tmp2}"])
                     self.put_move(tmp, [f"+#{addr}"])
-                    self.put_at(tmp, "+")
-                    self.put_move(tmp2, [f"+#{tmp}"], as_bool=True)
-                    self.put_move(tmp, args[1:])
+                    self.put_set("1", [f"+#{tmp}"])
+                    self.put_move(tmp2, [f"-#{tmp}"], as_bool=True)
+                    self.put_clear(args[1:], ignore_signed=True)
+                    self.put_move(tmp, self.sign_replaced_args(args[1:], "", "-"), append=False)
     
             return True
 
@@ -1146,24 +1197,20 @@ class Tobf:
         if name == "ifgt":
             a_left = self.addressof(args[0])
             a_right = self.addressof(args[1])
-            a_tmp = self.addressof(args[2])
 
-            self.put_at(a_tmp, "[-]")
+            a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
+            tmps.remove(a_tmp)
+            a_tmp2 = self.get_nearest_tmp(tmps, [a_left, a_right])
+            tmps.append(a_tmp)
+
             self.put_at(a_left, "[")
 
-            self.put_at(a_right, "[")
-            self.put_at(a_tmp, "+")
-            self.put_at(0, "+")
-            self.put_at(a_right, "-]")
+            self.put_move(a_right, [f"+#{a_tmp}", f"+#{a_tmp2}"])
 
-            self.put_at(a_tmp, "[")
-            self.put_at(a_right, "+")
-            self.put_at(a_tmp, "-]")
+            self.put_move(a_tmp, [f"+#{a_right}"])
 
             self.put_at(a_tmp, "+")
-            self.put_at(0, "[")
-            self.put_at(a_tmp, "-")
-            self.put_at(0, "[-]]")
+            self.put_move(a_tmp2, [f"-#{a_tmp}"], as_bool=True)
             self.put_at(a_tmp, "[[-]")
 
             return True
@@ -1171,7 +1218,11 @@ class Tobf:
         if name == "endifgt":
             a_left = self.addressof(args[0])
             a_right = self.addressof(args[1])
-            a_tmp = self.addressof(args[2])
+
+            # should not load vars without unload in block.
+            # should not (un)register workspaces in block.
+            # variables and tmps should be the same as at block head. 
+            a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
 
             self.put_at(a_left, "[-]+")
             self.put_at(a_tmp, "[-]]")
@@ -1327,79 +1378,97 @@ class Tobf:
 
         return self.put_invoke(name, args, self.tmps_)
 
+    def escape_comment(self, s: str) -> str:
+        for from_, to_ in [
+                [">", "{INC_PTR}"],
+                ["<", "{DEC_PTR}"],
+                ["+", "{INC}"],
+                ["-", "{DEC}"],
+                [",", "{IN}"],
+                [".", "{OUT}"],
+                ["[", "{LEFT}"],
+                ["]", "{RIGHT}"]]:
+            s = s.replace(from_, to_)
+
+        return s
+
     def compile_all(self, src: list, comments=False):
-        import sys
-        sys.stderr.write(" ".join(self.vars_) + "\n")
-
         for i in src:
-            if comments or i[0] == "bf":
-                print(" ".join(i) if type(i) == list else i)
-
-                if not comments:
-                    continue
+            if comments:
+                self.put(self.escape_comment(" ".join(i)))
 
             self.compile_instruction(i)
 
     def compile_file(self, file_name, comments=False):
-        size, vars, macros = Tobf.read_file(file_name)
+        pub_vars, vars, macros = self.read_file(file_name)
 
         self.vars_ = self.base_vars_ + vars
         self.compile_all(macros["main"].codes, comments)
 
-    @staticmethod
-    def read_file(file:str) -> Tuple[int, List[str], Dict[str, MacroProc]]:
-        """returns (size, vars, macros)"""
+    def find_dir(self, file: str) -> str:
+        for d in reversed(self.inc_dirs_):
+            if os.path.isfile(os.path.join(d, file)):
+                return d
 
-        size = -1
+        raise Exception(f"failed to open {file}")
+
+    def read_file(self, file: str) -> Tuple[List[str], List[str], Dict[str, MacroProc]]:
+        """returns (public_vars, vars, macros)"""
+
+        file_dir = self.find_dir(file)
+        dir_changed = os.path.sep in file
+        file = os.path.abspath(os.path.join(file_dir, file))
+        
+        if dir_changed:
+            self.inc_dirs_.append(os.path.dirname(file))
+
+        pub_vs = set([])
         vs = []
         ms = {"main": MacroProc("main", [], [])}
-        try:
-            f = io.open(file, "r")
-            label = "main"
 
-            mod = file.rsplit(".", maxsplit=1)[0] if "." in file else file
-            vs = split(f.readline())
+        src: List[str] = []
 
-            if len(vs) > 0 and vs[0].isdigit():
-                size = int(vs[0])
-                vs = vs[1:]
+        with io.open(file, "r") as f:
+            src = f.read().splitlines()
 
-            try:
-                while f.readable():
-                    src = f.readline().strip()
+        label = "main"
 
-                    if len(src) == 0:
-                        continue
-                    if src.startswith("#"):
-                        continue
+        vs = split(src[0])
 
-                    cod = split(src)
+        for line in src[1:]:
+            line = line.strip()
 
-                    if cod[0].startswith(":"):
-                        label = cod[0][1:]
+            if line == "":
+                continue
+            if line.startswith("#"):
+                continue
 
-                        if not (label in ms.keys()):
-                            ms[label] = MacroProc(label, [], [])
+            cod = split(line)
 
-                        if len(ms[label].params) == 0:
-                            ms[label].params = cod[1:].copy()
+            if cod[0] == "public":
+                pub_vs |= set(cod[1:])
 
-                        continue
+                continue
 
-                    if cod[0] == "end":
-                        break
+            if cod[0].startswith(":"):
+                label = cod[0][1:]
 
-                    ms[label].codes.append(cod)
-            except Exception as e:
-                f.close()
+                if not (label in ms.keys()):
+                    ms[label] = MacroProc(label, [], [])
 
-                raise e
+                if len(ms[label].params) == 0:
+                    ms[label].params = cod[1:].copy()
 
-            f.close()
-        except Exception as e:
-            raise e
+                continue
 
-        if size == -1:
-            size = len(vs)
+            if cod[0] == "end":
+                break
 
-        return (size, vs, ms)
+            ms[label].codes.append(cod)
+
+        if dir_changed:
+            self.inc_dirs_.pop()
+
+        pub_vs = [v for v in vs if v in pub_vs]
+
+        return (pub_vs, vs, ms)

@@ -5,6 +5,10 @@
 #   calls subsystem_name:init with args. and names as alias_name
 # unload subsystem_name ...args
 #   calls subsystem_name:clean with args. deallocates memory area for subsystem.
+# public ...vars
+#   unavairable in main program.
+#   declares variables as public.
+#   public variables can be copied/moved from/to objects with similar interface via copy/move instruction.
 
 # subsystem consts
 #   size: 0
@@ -53,7 +57,7 @@
 from typing import cast, Union, List, Tuple, Set, Dict, Callable
 import io
 from tobf import Tobf
-from base import calc_small_pair, src_extension, separate_sign, SubsystemBase, InstructionBase, MacroProc
+from base import Subsystem, calc_small_pair, src_extension, separate_sign, SubsystemBase, InstructionBase, MacroProc
 
 
 class Instruction_DefineConst(InstructionBase):
@@ -129,44 +133,44 @@ class Instruction_Pass(InstructionBase):
 
 class Subsystem_ConstSet(SubsystemBase):
     """constant definitions"""
-    def __init__(self, main: Tobf, name: str, args: List[str], get_addr: Callable[[int], int]):
+    def __init__(self, main: Tobf, name: str, args: List[str], instantiate: Callable[[int], int]):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
         self.resize(0)
-        self.set_base(get_addr(0))
+        instantiate(0, self)
 
         self.add_ins(Instruction_DefineConst("const", self))
         self.add_ins(Instruction_DefineEnum("enum", self))
 
 class Subsystem_Consts(SubsystemBase):
     """constant definitions"""
-    def __init__(self, main: Tobf, name: str, args: List[str], get_addr: Callable[[int], int]):
+    def __init__(self, main: Tobf, name: str, args: List[str], instantiate: Callable[[int], int]):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
         self.resize(0)
-        self.set_base(get_addr(0))
+        instantiate(0, self)
 
         self.add_ins(Instruction_DefineConst("def", self))
         self.add_ins(Instruction_IncrementConst("inc", self))
-        self.add_ins(Instruction_IncrementConst("dec", self, decrement=True))
+        self.add_ins(Instruction_IncrementConst("dec", self, _decrement=True))
         self.add_ins(Instruction_RedefineConst("redef", self))
 
 class Subsystem_Enums(SubsystemBase):
     """constant definitions"""
-    def __init__(self, main: Tobf, name: str, args: List[str], get_addr: Callable[[int], int]):
+    def __init__(self, main: Tobf, name: str, args: List[str], instantiate: Callable[[int], int]):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
         self.resize(0)
-        self.set_base(get_addr(0))
+        instantiate(0, self)
 
         self.add_ins(Instruction_DefineEnum("def", self))
 
 class Subsystem_Vars(SubsystemBase):
     """local variable area"""
-    def __init__(self, main: Tobf, name: str, args: List[Union[int, str]], get_addr: Callable[[int], int]):
+    def __init__(self, main: Tobf, name: str, args: List[Union[int, str]], instantiate: Callable[[int], int]):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
@@ -178,7 +182,7 @@ class Subsystem_Vars(SubsystemBase):
 
             self.resize(len(self._vars))
 
-        self.set_base(get_addr(self.size()))
+        instantiate(self.size(), self)
 
         self.add_ins(Instruction_Clean("clean", self, 0))
         self.add_ins(Instruction_DefineVar("def", self))
@@ -235,33 +239,35 @@ class Subsystem_Vars(SubsystemBase):
 
 
 class Subsystem_Code(SubsystemBase):
-    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], get_addr: Callable[[int], int]):
+    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], instantiate: Callable[[int, Subsystem, List[str]], int]):
         super().__init__(tobf, _name)
         self._main = cast(Tobf, self._main)
 
         self._macs = {}
         file = args[0] + "." + src_extension
-        size, vs, ms = self._main.read_file(file)
+        pub_vars, vs, ms = self._main.read_file(file)
 
-        self.resize(size)
-        self.set_base(get_addr(self.size()))
+        self.resize(len(vs))
 
         for v in vs:
-            self.def_var(v)
+            self.def_var(v, is_public=(v in pub_vars))
 
         for key in ms.keys():
             self._macs[key] = ms[key]
 
             self.add_ins(Instruction_Pass(key, self, len(ms[key].params)))
 
-        self.put("init", [], self._main.tmps_)
-
         self._codes = self._macs.copy()
 
         self.add_ins(Instruction_Init("init", self, 1))
 
+        instantiate(self.size(), self, args[1:])
+
+    def put_init(self, args: List[Union[int, str]]):
+        self.put("init", args, self._main.tmps_)
+
     def put_clean(self, args: List[Union[int, str]]):
-        self.put("clean", args)
+        self.put("clean", args, self._main.tmps_)
 
     def make_qname(self, name, params=[], args=[]):
         if name[0] in ["+", "-"]:
@@ -281,7 +287,10 @@ class Subsystem_Code(SubsystemBase):
 
         return name in self._macs.keys()
 
-    def put(self, name: str, args: List[Union[int, str]], tmps: List[int]):
+    def put(self, name: str, args: List[Union[int, str]], tmps: List[int] = None):
+        if tmps == None:
+            tmps = self._main.tmps_.copy()
+
         if name == "init" and "init" not in self._macs.keys():
             return
 

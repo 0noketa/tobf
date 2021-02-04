@@ -52,14 +52,6 @@
     callstack_labels:inc current
     b:@flat_call set _n  callstack_labels:current
     b:@at callstack_labels:current
-:push _v
-    is_var _v
-    stack:@w_move _v sp
-    inc sp
-:pop _v
-    is_var _v
-    dec sp
-    stack:@r_move sp _v
 :ret
     b:@flat_return
 :od
@@ -126,27 +118,19 @@
         jz d  sub:println
 
         # num
-        push it
+        stack:@push it
         ret
     label sub:add
-        pop it
-        pop it2
-        moveadd it2 it
-        push it
+        stack:@add
         ret
     label sub:sub
-        pop it2
-        pop it
-        movesub it2 it
-        push it
+        stack:@sub
         ret
     label sub:println
-        pop it
+        stack:@pop it
         out:writeint it
     label sub:ln
-        set 10 it
-        print it
-        clear it
+        print 10
         ret
     od
 

@@ -1,0 +1,89 @@
+x X _ y Y __ z Z
+tmp _ __
+
+loadas out code mod_print
+
+
+print 'b 'o 'o 'l '/ '1 10
+
+
+set '0 x
+clear y
+
+bool x
+bool y
+
+# ok: 1 0
+! out:writeint+space <- x | y
+print 10
+
+
+print 'n 'o 't '/ '1 10
+
+
+set '0 x
+clear y
+
+not x
+not y
+
+# ok: 0 1
+! out:writeint+space <- x | y
+print 10
+
+
+print 'b 'o 'o 'l 10
+
+
+set '0 x y z
+set 100 X Y Z
+
+bool x X
+bool -y Y
+bool -z +Z
+
+# ok: 48 0 0 1 1 101
+! out:writeint+space <- x | y | z | X | Y | Z
+print 10
+
+
+clear x y z
+set 100 X Y Z
+
+bool x X
+bool -y Y
+bool -z +Z
+
+# ok: 0 0 0 0 0 100
+! out:writeint+space <- x | y | z | X | Y | Z
+print 10
+
+
+print 'n 'o 't 10
+
+
+set '0 x y z
+set 100 X Y Z
+
+not x X
+not -y Y
+not -z +Z
+
+# ok: 48 0 0 0 0 100
+! out:writeint+space <- x | y | z | X | Y | Z
+print 10
+
+
+clear x y z
+set 100 X Y Z
+
+not x X
+not -y Y
+not -z +Z
+
+# ok: 0 0 0 1 1 101
+! out:writeint+space <- x | y | z | X | Y | Z
+print 10
+
+
+end

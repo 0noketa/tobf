@@ -1,22 +1,12 @@
-i j  f b n t e cf ci cz cb cu cln
+i j  f b n t e
 
 # i: current number
 # j: rest of numbers
 set 1  i
 
-# contains it
-resb 3
 loadas in code mod_input
     in:readint_until 10 j
 unload in
-resb 14
-
-add 70 cf ci cb cz cu
-add 3 ci
-sub 4 cb
-add 20 cz cu
-sub 5 cu
-add 10 cln
 
 # f: 1 to 3 (includes 3)
 # b: 1 to 5 (includes 5)
@@ -29,14 +19,14 @@ while j
     ! copy f | sub 3 <- t
     ifelse t +e
     else t -e
-        print cf ci cz cz
+        print 'F 'I 'Z 'Z
         clear n f
     endifelse t -e
 
     ! copy b | sub 5 <- t
     ifelse t +e
     else t -e
-        print cb cu cz cz
+        print 'B 'U 'Z 'Z
         clear n b
     endifelse t -e
 
@@ -46,7 +36,7 @@ while j
         unload out
     endif n
 
-    print cln
+    print 10
 
     inc b f
 

@@ -57,7 +57,7 @@ from base import separate_sign, calc_small_pair, SubsystemBase
 
 
 class Subsystem_Str(SubsystemBase):
-    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], get_addr: Callable[[int], int]):
+    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], instantiate: Callable[[int, SubsystemBase], int]):
         super().__init__(tobf, _name)
         self._main = cast(Tobf, self._main)
 
@@ -67,7 +67,7 @@ class Subsystem_Str(SubsystemBase):
             self._str_size = 16
 
         self.resize(self._str_size + 6)
-        self.set_base(get_addr(self.size()))
+        instantiate(self.size(), self)
 
         self.def_const("size", self._str_size)
 

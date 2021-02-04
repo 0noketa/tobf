@@ -188,15 +188,24 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] in ["-?", "/?", "-help", "--help"]:
-        print(f"python {sys.argv[0]} [-main [memory_size]] < input.bf > output.bf")
+        print(f"python {sys.argv[0]} [-main] [-memory_sizeN] [-O0] < input.bf > output.bf")
         print(f"  -main  ignores initial data")
 
         sys.exit(0)
 
-    is_main = len(sys.argv) > 1 and sys.argv[1] == "-main"
-    memory_size = int(sys.argv[2]) if is_main and len(sys.argv) > 2 else -1
+    is_main = False
+    memory_size = -1
+    optimization_level = 2
 
-    src = optimize("".join(map(optimize, sys.stdin.readlines())), is_partial=False, is_main=is_main, max_mem_size=memory_size)
+    for arg in sys.argv[1:]:
+        if arg == "-main":
+            is_main = True
+        elif arg.startswith("-memory_size"):
+            memory_size = int(arg[12:])
+        elif arg.startswith("-O"):
+            optimization_level = int(arg[2:])
+
+    src = optimize("".join(map(optimize, sys.stdin.readlines())), is_partial=(optimization_level <= 1), is_main=is_main, max_mem_size=memory_size)
 
     w = 80
     for i in range(0, len(src), w):

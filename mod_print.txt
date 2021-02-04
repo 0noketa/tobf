@@ -69,14 +69,10 @@ a x b y c z e n m
     clear n b c z
 
 :newline
-    set 10 a
-    print a
-    clear a
+    print 10
 
 :space
-    set 32 a
-    print a
-    clear a
+    print 32
 
 :writelnint arg
     writeint arg

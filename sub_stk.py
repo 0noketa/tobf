@@ -49,11 +49,11 @@
 
 from typing import cast, Union, List, Dict, Callable
 from tobf import Tobf
-from base import separate_sign, calc_small_pair, SubsystemBase
+from base import Subsystem, separate_sign, calc_small_pair, SubsystemBase
 
 
 class Subsystem_Stk(SubsystemBase):
-    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], get_addr: Callable[[int], int]):
+    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], instantiate: Callable[[int, Subsystem], int]):
         super().__init__(tobf, _name)
         self._main = cast(Tobf, self._main)
 
@@ -66,6 +66,8 @@ class Subsystem_Stk(SubsystemBase):
             self._stk_size
 
         self.resize(self._stk_size * 2 + (5 if self.dyn else 3))
+
+        instantiate(self.size(), self)
 
     def put_clean(self, args: List[Union[str, int]]):
         if len(args) > 0 and args[0] == "fast":
@@ -302,9 +304,9 @@ class Subsystem_Stk(SubsystemBase):
                 last = i + 1 == len(args)
 
                 if arg == "swap":
-                    self.put_juggling_rot(2, first=first, last=last, tmps=tmps)
+                    self.put_juggling_rot(2, first=first, last=last)
                 elif arg == "dup":
-                    self.put_juggling_dup(1, first=first, last=last, tmps=tmps)
+                    self.put_juggling_dup(1, first=first, last=last)
                 elif arg == "rot":
                     self.put_juggling_rot(3, first=first, last=last)
                 elif arg == "drop":
@@ -419,7 +421,7 @@ class Subsystem_Stk(SubsystemBase):
         if name == "@swap":
             # self._main.put_at(self.offset(), ">>[>>]<<[<[>>+<<-] <<[>>+<<-] >>>>[<<<<+>>>>-] <[<<]]")
             # return
-            args = [2]
+            args = ["2"]
             name = "@rot"
 
         if name == "@rot":
