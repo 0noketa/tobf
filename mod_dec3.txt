@@ -121,14 +121,10 @@ n m e z
 :_copyifgt9 v n e
     _copy v n
     set 9 m
-    tmp +e
-    ifgt n m
-    tmp -e
+    ifgt n m e
 
 :_endifgt9 n e
-    tmp +e
-    endifgt n m
-    tmp -e
+    endifgt n m e
 
 :_moveadd_dec _f_sub _f_inc _f_copyadd x y
     @check x

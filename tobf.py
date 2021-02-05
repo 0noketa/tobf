@@ -64,6 +64,12 @@
 #     copysub in_var ...out_vars
 # copy in_sub ...out_subs_with_sign
 #   if sub was arraylike, copy entire array. or copy members.
+# add in_var ...out_vars
+# sub in_var ...out_vars
+#   alias of copyadd/copysub
+# add -in_var ...out_vars
+# sub -in_var ...out_vars
+#   alias of moveadd/movesub
 # tmp addr
 #   register variable to implicit workspace.
 #   variable should be stored zero.
@@ -93,13 +99,26 @@
 # else cond_var -work_var
 #   notices work_var as not touched
 # endifelse cond_var work_var
-# ifgt var0 var1 tmp_var
-#   required tmps: 1
+# ifgt var0 var1 tmp_var0 tmp_var2
+# iflt var0 var1 tmp_var0 tmp_var2
 #   skips block if var1 > var0.
 #   breaks vars. no variable in args can not be used in this block.
-# endifgt var0 var1 tmp_var
+# ifgt var0 var1 tmp_var
+# iflt var0 var1 tmp_var
 #   required tmps: 1
+#   block instruction with tmps are unsafe when block contain [tmp] instruction.
+# ifgt var0 var1
+# iflt var0 var1
+#   required tmps: 2
+# endifgt var0 var1 tmp_var0 tmp_var1
+# endiflt var0 var1 tmp_var0 tmp_var1
 #   breaks vars.
+# endifgt var0 var1 tmp_var
+# endiflt var0 var1 tmp_var
+#   required tmps: 1
+# endifgt var0 var1
+# endiflt var0 var1
+#   required tmps: 2
 # ifnotin cond_var ...imms
 # endifnotin cond_var ...imms
 #   skips block if any immediate equals to cond_var.
@@ -896,6 +915,15 @@ class Tobf:
 
             return True
 
+        if name in ["add", "sub"]:
+            sign, arg = separate_sign(args[0])
+
+            if self.is_var(arg):
+                if sign == "-":
+                    name = "move" + name
+                else:
+                    name = "copy" + name
+
         if name == "swap":
             if len(tmps) == 0:
                 raise Exception(f"[swap] requires 1 workspace")
@@ -1198,10 +1226,19 @@ class Tobf:
             a_left = self.addressof(args[0])
             a_right = self.addressof(args[1])
 
-            a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
-            tmps.remove(a_tmp)
-            a_tmp2 = self.get_nearest_tmp(tmps, [a_left, a_right])
-            tmps.append(a_tmp)
+            if len(args) > 2:
+                a_tmp = self.addressof(args[2])
+            else:
+                a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
+                tmps.remove(a_tmp)
+
+            if len(args) > 3:
+                a_tmp2 = self.addressof(args[3])
+            else:
+                a_tmp2 = self.get_nearest_tmp(tmps, [a_left, a_right])
+
+            if len(args) < 3:
+                tmps.append(a_tmp)
 
             self.put_at(a_left, "[")
 
@@ -1219,10 +1256,13 @@ class Tobf:
             a_left = self.addressof(args[0])
             a_right = self.addressof(args[1])
 
-            # should not load vars without unload in block.
-            # should not (un)register workspaces in block.
-            # variables and tmps should be the same as at block head. 
-            a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
+            if len(args) > 2:
+                a_tmp = self.addressof(args[2])
+            else:
+                # should not load vars without unload in block.
+                # should not (un)register workspaces in block.
+                # variables and tmps should be the same as at block head. 
+                a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
 
             self.put_at(a_left, "[-]+")
             self.put_at(a_tmp, "[-]]")

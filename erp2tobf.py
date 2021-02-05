@@ -35,13 +35,23 @@ from __future__ import annotations
 #   print poped char
 # getc ( -- char )
 #   push input char
+# putInt ( int -- )
+#   print poped int
+# getInt ( -- int )
+#   push input int.
+# . ( int -- )
+#   print poped int
+# , ( -- int )
+#   push input int.
 # ln
 #   print newline
 # + ( x y -- x+y )
 #   add poped 2 values. and push it. 
+# - ( x y -- x-y )
+#   add poped 2 values. and push it. 
 # if ( cond t f -- t|f )
 #   pop 3 values. if first is not zero, push second. or else push third. 
-from typing import Union, List, Set
+from typing import Union, Tuple, List, Set
 import sys
 import io
 
@@ -159,6 +169,12 @@ max_rstack_size = 0x100
 max_dstack_size = 0x10000
 
 
+jumpless_words = [
+    "swap", "dup", "rot", "drop",
+    "+", "-", "*", "/", "<", "=", "<>",
+    "getc", "putc", "getInt", "putInt", ",", ".", "ln",
+    "inc", "dec", "pInc", "pDec", "!", "@", "!b", "@b"
+]
 builtin_words = [
     ":", "{", "}", ";",
     "jmp", "call", "if",
@@ -176,6 +192,9 @@ def is_call(src: List[str], name: str, i: int, vars: List[str] = None, arrays: L
     arrays = get_arrays(src) if arrays == None else arrays
 
     if name.startswith("'"):
+        return False
+
+    if name.startswith("="):
         return False
 
     if name in vars:
@@ -244,6 +263,9 @@ def get_mem_size(src: List[str]) -> int:
     return len(pointable_vars) + get_array_size(src)
 
 def label(src: List[str], i: int, vars: List[str] = None, arrays: List[str] = None) -> int:
+    """returns last(in src[:i + 1]) label number.\n
+       label numbers include labels for calls.
+    """
     r = 1
     vars = get_vars(src) if vars == None else vars
     arrays = get_arrays(src) if arrays == None else arrays
@@ -255,8 +277,19 @@ def label(src: List[str], i: int, vars: List[str] = None, arrays: List[str] = No
 
     return r
 def word_label(src: List[str], name: str, i: int) -> int:
+    """label number(in output) from label name(in source)
+    """
+    return word_info(src, name, i)[0]
+def word_pos(src: List[str], name: str, i: int) -> int:
+    """token index from label name
+    """
+    return word_info(src, name, i)[1]
+def word_info(src: List[str], name: str, i: int) -> Tuple[int, int]:
+    """returns (label number, index of token)
+    """
     base = ""
     r = -1
+    idx = -1
     vars = get_vars(src)
     arrays = get_arrays(src)
 
@@ -273,8 +306,9 @@ def word_label(src: List[str], name: str, i: int) -> int:
 
             if name == base + it or name == it:
                 r = label(src, j, vars, arrays)
+                idx = j
 
-    return r
+    return (r, idx)
 
 def remove_local_names(src: List[str]):
     current_base = ""
@@ -282,10 +316,12 @@ def remove_local_names(src: List[str]):
     while i < len(src):
         tkn = src[i]
 
-        if is_local_label(src[i]):
+        if is_local_label(tkn):
             src[i] = current_base + tkn
+        elif tkn.startswith("'") and (not (tkn.endswith("'") and len(tkn) == 3)) and is_local_label(tkn[1:]):
+            src[i] = "'" + current_base + tkn[1:]
         elif tkn == ":" and i + 1 < len(src) and not is_local_label(src[i + 1]):
-            current_base = src[1]
+            current_base = src[i + 1]
             i += 1
 
         i += 1
@@ -305,23 +341,31 @@ def skip_anonymous_function(src: List[str], i: int) -> int:
     
     return i
 
-def remove_anonymous_functions(src: List[str], dst: List[List[str]], from_: int = 0, to_: int = None, prefix: str = "erp_func_") -> List[str]:
-    if to_ == None:
-        to_ = len(src)
-
-    for i in range(from_, to_):
+def remove_anonymous_functions(src: List[str], dst: List[List[str]], prefix: str = "erp_func_") -> List[str]:
+    """dst: (out) list of function code"""
+    i = 0
+    while i < len(src):
         tkn = src[i]
 
         if tkn == "{":
             j = skip_anonymous_function(src, i)
 
-            src2 = remove_anonymous_functions(src.copy(), dst, i + 1, j - 1)
+            src2 = remove_anonymous_functions(src[i + 1:j - 1], dst, prefix)
 
-            src[i] = f"'{prefix + len(dst)}"
-            dst.push = src2
-            src.pop(*range(i + 1, j))
+            # merge functions
+            if src2 in dst:
+                f = dst.index(src2)
+            else:
+                f = len(dst)
+                dst.append(src2)
 
-    print(" ".join(src))
+            src[i] = f"'{prefix}{f}"
+
+            for k in range(j - 1, i, -1):
+                src.pop(k)
+
+        i += 1
+
     return src
 
 
@@ -352,28 +396,26 @@ def compile(src: List[str]):
     dstack_size = 32
     anon_func_prefix = "erp_func_"
 
-    # print(" ".join(src))
+    optimize(src)
 
-    # has_main = main_exists(src)
-    # anon_funcs = []
-    # remove_local_names(src)
-    # src = remove_anonymous_functions(src, anon_funcs, anon_func_prefix)
+    has_main = main_exists(src)
+    anon_funcs = []
+    remove_local_names(src)
+    src = remove_anonymous_functions(src, anon_funcs, anon_func_prefix)
 
-    # if has_main:
-    #      anons = []
-    # else:
-    #     anons = ["{"]
-    #     src = ["}", "drop"] + src
+    if has_main:
+         anons = []
+    else:
+        anons = ["{"]
+        src = ["}", "drop"] + src
 
-    # for i in range(len(anon_funcs)):
-    #     anons += [":", f"{anon_func_prefix}{i}"] + anon_funcs[i] + [";"]
+    for i in range(len(anon_funcs)):
+        anons += [":", f"{anon_func_prefix}{i}"] + anon_funcs[i] + [";"]
 
-    # src = anons + src
+    src = anons + src
 
-    # print("-" * 70)
-    # print(" ".join(src))
+    optimize(src)
 
-    # sys.exit(0)
     vars = get_vars(src)
     pointable_vars = get_pointable_vars(src, vars)
     arrays = get_arrays(src)
@@ -627,8 +669,8 @@ def compile(src: List[str]):
     dst.append(f"erp:@end {last_label}")
 
     head = [
-        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e erp2tobf_tmp0 erp2tobf_tmp1",
-        "tmp erp2tobf_tmp0 erp2tobf_tmp1",
+        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e tmp0 tmp1",
+        "tmp tmp0 tmp1",
         "loadas out code mod_print",
         "loadas in code mod_input",
         "loadas erp code mod_jump"
@@ -643,7 +685,7 @@ def compile(src: List[str]):
         if mem_size > 8:
             mem_loaders.append((mem_size, f"loadas {mem_name} mem {mem_size}"))
         else:
-            mem_loaders.append((mem_size, f"loadas {mem_name} fastmem {mem_size} 1"))
+            mem_loaders.append((mem_size, f"loadas {mem_name} fastmem {mem_size}"))
 
     mem_loaders.sort(key=(lambda x: x[0]))
     head.extend([ldr[1] for ldr in mem_loaders])
@@ -668,22 +710,6 @@ def compile(src: List[str]):
 
     return dst
 
-def remove_local_names(src: List[str]):
-    current_base = ""
-    i = 0
-    while i < len(src):
-        tkn = src[i]
-
-        if is_local_label(tkn):
-            src[i] = current_base + tkn
-        elif tkn.startswith("'") and (not (tkn.endswith("'") and len(tkn) == 3)) and is_local_label(tkn[1:]):
-            src[i] = "'" + current_base + tkn[1:]
-        elif tkn == ":" and i + 1 < len(src) and not is_local_label(src[i + 1]):
-            current_base = src[i + 1]
-            i += 1
-
-        i += 1
-
 def main_exists(src: List[str]) -> bool:
     for i in range(len(src) - 1):
         if src[i] == ":" and src[i + 1] == "main":
@@ -691,63 +717,61 @@ def main_exists(src: List[str]) -> bool:
 
     return False
 
-def skip_anonymous_function(src: List[str], i: int) -> int:
-    if src[i] != "{":
-        return i
+def optimize(src: List[str], repeat: int = None):
+    # can spread inline functions
+    if repeat != None:
+        for _ in range(repeat):
+            optimize(src)
 
-    d = 0
-    for i in range(i + 1, len(src)):
-        if src[i] == "}":
-            if d == 0:
-                return i + 1
-            d -= 1
-        elif src[i] == "{":
-            d += 1
-    
-    return i
+        return
 
-def remove_anonymous_functions(src: List[str], dst: List[List[str]], prefix: str = "erp_func_") -> List[str]:
     i = 0
     while i < len(src):
-        tkn = src[i]
+        src[i] = src[i]
 
-        if tkn == "{":
-            j = skip_anonymous_function(src, i)
-
-            src2 = remove_anonymous_functions(src[i + 1:j - 1], dst, prefix)
-
-            src[i] = f"'{prefix}{len(dst)}"
-            dst.append(src2)
-
-            for k in range(j - 1, i, -1):
-                src.pop(k)
-
-        i += 1
-
-    return src
-
-def optimize(src: List[str]):
-    i = 0
-    while i < len(src):
-        tkn = src[i]
-
-        if tkn == "1" and i + 1 < len(src):
+        if src[i] == "1" and i + 1 < len(src):
             if src[i + 1] == "+":
                 src[i]  = "inc"
                 src.pop(i + 1)
             elif src[i + 1] == "-":
                 src[i]  = "dec"
                 src.pop(i + 1)
-        elif tkn.startswith("'") and tkn.endswith("'") and len(tkn) == 3:
-            src[i] = str(ord(tkn[1]))
+        elif src[i].startswith("'") and src[i].endswith("'") and len(src[i]) == 3:
+            src[i] = str(ord(src[i][1]))
+        elif is_call(src, src[i], i):
+            j = word_pos(src, src[i], i) + 2
+            k = j
+            while k < len(src):
+                if src[k] not in jumpless_words:
+                    break
+
+                k += 1
+
+            # this label can be inline
+            if src[k] == ";":
+                src.pop(i)
+
+                for tkn in src[k - 1:j - 1:-1]:
+                    src.insert(i, tkn)
+
+                continue
+        
+        if is_call(src, src[i], i) and i + 1 < len(src) and src[i + 1] == ";":
+            src[i] = "'" + src[i]
+            src[i + 1] = "jmp"
+        elif src[i] == "call" and i + 1 < len(src) and src[i + 1] == ";":
+            src[i] = "jmp"
+
+        if src[i] in ["jmp", ";"] and i + 1 < len(src) and src[i + 1] == ";":
+            j = i + 1
+            while j < len(src) and src[j] == ";":
+                src.pop(j)
 
         i += 1
 
 if __name__ == "__main__":
     src = load(sys.stdin, [])
-    # optimize(src)
     code = compile(src)
 
     for i in code:
         print(i)
-

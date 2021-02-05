@@ -146,14 +146,10 @@ print(f"""
 :_copyifgt9 v n o
     _copy v n
     set 9 m
-    tmp +o
-    ifgt n m
-    tmp -o
+    ifgt n m o
 
 :_endifgt9 n o
-    tmp +o
-    endifgt n m
-    tmp -o
+    endifgt n m o
 
 :_moveadd_dec _f_sub _f_inc _f_copyadd x y
     @check x
@@ -350,7 +346,7 @@ print(cols("""
 
 print("""
 :@popfrom v stk""")
-print(cols("""
+print(rcols("""
     stk:@pop v:col{0}"""))
 
 print("""

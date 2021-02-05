@@ -2,6 +2,7 @@
 # stack (no size-limitation)
 #   default: 0, v0, used?, v1, used?, ..., 0, 0
 #   dynamic: 0, v0, used?, v1, used?, ..., 0, 0, 0, 0
+#   reversed: 0, 0, ..., used?, v1, used?, v0, 0
 # consts:
 #   is_arraylike: 0
 #   is_stacklike: 1
@@ -16,20 +17,34 @@
 #   initializes for n cells
 # init n dynamic
 #   initializes for n cells. with instructions for unknown range
+# init n reversed
+# init n reversed dynamic
+#   not implemented.
+#   uses reversed structure that reduces code when memory layout is something like below
+#     stack1(reversed), vars, stack2
+#   in optimized code, any address in "vars" becomes base address.
 # clean
 #   cleans all
 # @clear
 #   drops all
 # @copypush ...in_vals
 #   appends copied values to last.
+#   this instruction will be removed.
 # @push ...in_vals
 #   appends values to last.
+#   breaks variable when prefixed with "-".
+#   keyword "input" can be included in args. they pushes input instead of variable.
 # @pop
 #   removes last value
 # @pop ...out_vars
 #   removes last values. and stores to out_vars
+#   keyword "print" can be included in args. they prints poped value instead of assignment.
 # @dup
 # @dup imm_n_times
+# @dup var_n_times
+#   not implemented
+# @dup -var_n_times
+#   not implemented
 # @swap
 # @rot
 # @rot imm_n_range
@@ -41,11 +56,19 @@
 # @dec
 #   stack jugglers.
 #   remove last value(s) and stores calulated value(s) 
-#   calculations are same as concatenative languages
+#   calculations are same as in concatenative languages
 #   -var versions break variables
-# @calc ...stack_jaggling_code
-#   inline rpn claculator. accepts any of [dup swap rot + - 1+ 1- , . <anynumber> <anychar>]
+# @calc ...stack_juggling_code
+#   inline rpn claculator.
+#   accepts any of [dup swap rot + - 1+ 1- , . <anynumber> <anychar>]
+# @juggle imm_range ...imm_indices
+#   not implemented. all static jugglers can be wrapper of this instruction.
+#   pop values and push copied values.
+#   ex:
+#     # a b c d -- a b c d  c b a d
+#     @juggle 4  3 2 1 0  1 2 3 0
 # @empty out_var
+#   1 if stack is empty
 
 from typing import cast, Union, List, Dict, Callable
 from tobf import Tobf
@@ -59,13 +82,15 @@ class Subsystem_Stk(SubsystemBase):
 
         if len(args) > 0:
             size = self._main.valueof(args[0])
-            self.dyn = len(args) > 1 and args[1] == "dynamic"
+            self.dynamic_ = "dynamic" in args[1:]
+            self.reversed_ = "reversed" in args[1:]
             self._stk_size = size
         else:
-            self.dyn = False
+            self.dynamic_ = False
+            self.reversed_ = False
             self._stk_size
 
-        self.resize(self._stk_size * 2 + (5 if self.dyn else 3))
+        self.resize(self._stk_size * 2 + (5 if self.dynamic_ else 3))
 
         instantiate(self.size(), self)
 
@@ -430,7 +455,7 @@ class Subsystem_Stk(SubsystemBase):
                 sign, arg = separate_sign(args[0])
 
                 if self._main.is_var(arg):
-                    if not self.dyn:
+                    if not self.dynamic_:
                         raise Exception(f"[{self.name()}:@rot] for dynamic range is not enabled in source code")
 
                     addr = self._main.addressof(arg)
