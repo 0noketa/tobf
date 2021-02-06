@@ -39,7 +39,7 @@ from base import separate_sign, calc_small_pair, SubsystemBase
 
 
 class Subsystem_FastMem(SubsystemBase):
-    def __init__(self, main: Tobf, name, args: List[str], get_addr: Callable[[int], int]):
+    def __init__(self, main: Tobf, name, args: List[str], instantiate: Callable[[int, SubsystemBase], int]):
         super().__init__(main, name)
 
         if len(args) > 0:
@@ -49,9 +49,7 @@ class Subsystem_FastMem(SubsystemBase):
 
         self.resize(self.mem_size_)
         self.fix()
-        self.set_base(get_addr(self.size()))
-
-        sys.stderr.write(f"{name} was placed at {self.offset()}\n")        
+        instantiate(self.size(), self)
 
         self.def_const("size", self.mem_size_)
 

@@ -53,6 +53,7 @@ from __future__ import annotations
 #   pop 3 values. if first is not zero, push second. or else push third. 
 from typing import Union, Tuple, List, Set
 import sys
+import os
 import io
 
 
@@ -370,9 +371,9 @@ def remove_anonymous_functions(src: List[str], dst: List[List[str]], prefix: str
 
     return src
 
-
-def load(file: io.TextIOWrapper, loaded: List[str] = []) -> List[str]:
+def load(file: io.TextIOWrapper, loaded: List[str] = [], inc_dir: List[str] = []) -> List[str]:
     s = file.read()
+    inc_dir = inc_dir + ["."]
 
     src = list(filter(len, s.split()))
 
@@ -381,7 +382,21 @@ def load(file: io.TextIOWrapper, loaded: List[str] = []) -> List[str]:
         if src[i] == "import":
             j = i + 1
             if not (src[j] in loaded):
-                with io.open(src[j] + ".erp") as f:
+                d = ""
+                f = src[i + 1] + ".erp"
+                for d2 in reversed(inc_dir):
+                    f2 = os.path.join(d2, f)
+
+                    if os.path.isfile(f2):
+                        d = d2
+                        f = f2
+
+                        break
+
+                if d == "":
+                    raise Exception(f"can not open {f}")
+
+                with io.open(f) as f:
                     src2 = load(f, loaded)
             else:
                 src2 = []
@@ -751,7 +766,19 @@ def optimize(src: List[str], repeat: int = None):
         i += 1
 
 if __name__ == "__main__":
-    src = load(sys.stdin, [])
+    inc_dir = []
+
+    for arg in sys.argv[1:]:
+        if arg.startswith("-I"):
+            inc_dir.append(arg[2:])
+
+        if arg in ["-help", "-?", "-h"]:
+            print(f"python {sys.argv[0]} [options] < src > dst")
+            print(f"options:")
+            print(f"  -Idir  add include/import search directory")
+            sys.exit(0)
+
+    src = load(sys.stdin, [], inc_dir)
     code = compile(src)
 
     for i in code:

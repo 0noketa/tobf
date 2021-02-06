@@ -1,6 +1,6 @@
 import erp_std
 
-ary a 32
+ary a 224
 var size
 var p
 var f

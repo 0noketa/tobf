@@ -1,5 +1,7 @@
 
 # subsystem mem
+# memory layout:
+#   0, value0, 0, value1, ..., value(N-1), 0, 0, 0, 0
 # init imm
 #   initialize imm bytes of random-access memory. only once works. imm <= 256.
 # clean imm
@@ -48,10 +50,6 @@ from base import separate_sign, SubsystemBase
 
 class Subsystem_Memory(SubsystemBase):
     """random-access memory area"""
-
-    def addressof(self, addr):
-        return self._main.addressof(addr) if type(addr) == str else addr
-
 
     def inc_or_dec(self, c, n):
         for i in range(n // 16):
@@ -116,7 +114,7 @@ class Subsystem_Memory(SubsystemBase):
             return
 
         # + eos
-        size = self._mem_size + 2
+        size = self.mem_size_ + 2
 
         if fast:
             return
@@ -137,13 +135,52 @@ class Subsystem_Memory(SubsystemBase):
         else:
             _cells = 16
 
-        self._mem_size = _cells
+        self.mem_size_ = _cells
         _size = (_cells + 2) * 2
         self.resize(_size)
 
         instantiate(self.size(), self)
 
-        self.def_const("size", self._mem_size)
+        self.def_const("size", self.mem_size_)
+
+    def array_size(self) -> bool:
+        return self.mem_size_
+    def is_readable_array(self) -> bool:
+        return True
+    def is_writable_array(self) -> bool:
+        return True
+    def readable_vars(self) -> bool:
+        return ["first", "last"]
+    def writable_vars(self) -> bool:
+        return ["first", "last"]
+
+    def has_var(self, name: str) -> bool:
+        if self._main.is_val(name):
+            idx = self._main.valueof(name)
+
+            if idx in range(self.mem_size_):
+                return True
+
+        return name in ["first", "last"]
+
+    def addressof(self, value: str) -> int:
+        """direct I/O interface. index as variable"""
+
+        if self.mem_size_ == 0:
+            raise Exception(f"empty array has no readable address")
+
+        if value == "first":
+            return self.offset(1)
+        if value == "last":
+            return self.offset(1 + (self.mem_size_ - 1) * 2)
+
+        if self._main.is_val(value):
+            idx = self._main.valueof(value)
+
+            if idx in range(self.mem_size_):
+                return self.offset(1 + idx * 2)
+
+        raise Exception(f"can not get address of {value}")
 
     def has_ins(self, name: str, args: list) -> bool:
         return (name in [
@@ -163,7 +200,7 @@ class Subsystem_Memory(SubsystemBase):
             or super().has_ins(name, args))
 
     def put_clean(self, args: list):
-        if len(args) > 0 and self._main.valueof(args[0]) != self._mem_size:
+        if len(args) > 0 and self._main.valueof(args[0]) != self.mem_size_:
             raise Exception(f"error: mem:@clean with different size")
             return
 
@@ -275,41 +312,56 @@ class Subsystem_Memory(SubsystemBase):
             addr = self._main.addressof(args[0])
 
             if ins_name == "@w_copy":
-                self.load_global(addr)
-
-                self.store_it([self.offset(4)], ["+" + args[0]])
+                self._main.put_copy(addr, [f"+#{self.offset(4)}"])
             else:
-                self._main.put_at(addr, "[")
-                self._main.put_at(self.offset(4), "+")
-                self._main.put_at(addr, "-]")
+                self._main.put_move(addr, [f"+#{self.offset(4)}"])
 
             out_vars = args[1:]
+            tmp = self._main.get_nearest_tmp(tmps, [addr])
 
             for i in range(len(out_vars)):
                 name = out_vars[i]
                 sign, name = separate_sign(name)
 
-                addr = self._main.addressof(name)
-                self.load_global(addr)
+                if self._main.is_var(name):
+                    dst_addr = self._main.addressof(name)
 
-                self.store_it([self.offset(2)], ["+" + name])
+                    self._main.put_copy(dst_addr, [f"+#{self.offset(2)}"])
 
-                # for next destination
-                if i < len(out_vars) - 1:
-                    self.moveadd_global(self.offset(4), [self.offset()])
-                    self.moveadd_global(self.offset(), [0, self.offset(4)])
+                    # for next destination
+                    if i < len(out_vars) - 1:
+                        self._main.put_move(self.offset(4), [f"+#{self.offset()}"])
+                        self._main.put_move(self.offset(), [f"+#{tmp}", f"+#{self.offset(4)}"])
 
-                self._main.put(">" * self.offset())
-                self._main.put(""">>[->>[>>+<<-]<<[>>+<<-]+>>]""")
-                if sign == "":
-                    self._main.put("""<[-]>""")
-                self._main.put(""">>[<<<""")
-                self._main.put("-" if sign == "-" else "+")
-                self._main.put(""">>>-]<<<<[-<<]""")
-                self._main.put("<" * self.offset())
+                    self._main.put(">" * self.offset())
+                    self._main.put(""">>[->>[>>+<<-]<<[>>+<<-]+>>]""")
+                    if sign == "":
+                        self._main.put("""<[-]>""")
+                    self._main.put(""">>[<<<""")
+                    self._main.put("-" if sign == "-" else "+")
+                    self._main.put(""">>>-]<<<<[-<<]""")
+                    self._main.put("<" * self.offset())
 
-                if i < len(out_vars) - 1:
-                    self.moveadd_global(0, [self.offset(4)])
+                    if i < len(out_vars) - 1:
+                        self._main.put_move(tmp, [f"+#{self.offset(4)}"])
+
+                    continue
+
+                if self._main.is_val(name):
+                    dst_idx = self._main.valueof(name)
+
+                    self._main.put_at(self.offset(4), "[")
+                    self._main.put_at(self.offset(1 + dst_idx * 2), "+")
+
+                    if i + 1 < len(out_vars): 
+                        self._main.put_at(self.offset(2), "+")
+
+                    self._main.put_at(self.offset(4), "-]")
+
+                    if i + 1 < len(out_vars): 
+                        self._main.put_move(self.offset(2), [f"+#{self.offset(4)}"])
+
+                    continue
 
             return
 
@@ -326,8 +378,8 @@ class Subsystem_Memory(SubsystemBase):
                     self.clear(v)
 
             # static addressing
-            if not self._main.is_var(address):
-                address = self._main.addressof(address)
+            if self._main.is_val(address):
+                address = self._main.valueof(address)
                 address = self.offset(address * 2 + 1)
 
                 if ins_name == "@r_copy":

@@ -32,8 +32,8 @@
 	=then_body ;
 : then
 var then_body
-	'then_body @ {
-		'then_body @ swap
+	then_body {
+		then_body swap
 	} {
 		'noop
 	} if call

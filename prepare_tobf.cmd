@@ -1,1 +1,1 @@
-set TOBF_DIR=%~pd0
+@set TOBF_DIR=%~pd0
