@@ -61,8 +61,7 @@
 # @calc ...stack_juggling_code
 #   inline rpn claculator.
 #   accepts any of [dup swap rot + - 1+ 1- , . <anynumber> <anychar>]
-# @juggle imm_range ...imm_indices
-#   not implemented. all static jugglers can be wrapper of this instruction.
+# @juggle imm_src_range ...imm_indices
 #   pop values and push copied values.
 #   ex:
 #     # a b c d -- a b c d  c b a d
@@ -110,6 +109,7 @@ class Subsystem_Stk(SubsystemBase):
         n, m = calc_small_pair(v, 1)
 
         if m == 1 or n * m < n + m + 5:
+            n = n * m
             self._main.put("+" * n + ">")
         else:
             self._main.put(">" + "+" * n + "[<" + "+" * m + ">-]")
@@ -132,7 +132,8 @@ class Subsystem_Stk(SubsystemBase):
                 "@calc"]
             or len(args) > 0
                 and name in [
-                    "@push", "@copypush", "@pop"]
+                    "@push", "@copypush", "@pop",
+                    "@juggle"]
             or super().has_ins(name, args))
 
     def skip_args(self, args: list, i: int, pred: str) -> int:
@@ -323,8 +324,7 @@ class Subsystem_Stk(SubsystemBase):
             if len(args) == 0:
                 return
 
-            for i in range(len(args)):
-                arg = args[i]
+            for i, arg in enumerate(args):
                 first = i == 0
                 last = i + 1 == len(args)
 
@@ -363,9 +363,7 @@ class Subsystem_Stk(SubsystemBase):
             if len(args) == 0:
                 raise Exception("stk:@push requires 1 arg")
 
-            for i in range(len(args)):
-                arg = args[i]
-                
+            for i, arg in enumerate(args):                
                 self.put_juggling_push(arg, i == 0, i + 1 == len(args), tmps=tmps)
 
             return
@@ -504,6 +502,118 @@ class Subsystem_Stk(SubsystemBase):
 
         if name in ["@inc", "@dec"]:
             self.put_juggling_inc(name == "@dec", first=True, last=True)
+
+            return
+
+        if name == "@juggle":
+            if len(args) == 0:
+                raise Exception(f"[stk:@juggle/0] is not implemented")
+
+            if len(list(filter(self._main.is_val, args))) != len(args):
+                raise Exception(f"currently [stk:@juggle] accept only immediates.")
+
+            src_size = self._main.valueof(args[0])
+
+            src_stack = list(range(src_size))
+            dst_stack = list(map(self._main.valueof, args[1:]))
+            n_affected = max(len(src_stack), len(dst_stack)) + 2
+
+            # current stack
+            stack = list(src_stack) +  [-1] * (n_affected - len(src_stack))
+
+
+            def clear():
+                # clear values
+                for i, v in enumerate(src_stack):
+                    if v not in dst_stack:
+                        # ..., *v(N-size), 1, ..., at v(N-size + i), 1, ..., v(N)=empty, 0
+                        self._main.put_at(i * 2, "[-]")
+                        stack[i] = -1
+
+            def is_placed(v: int) -> bool:
+                """True if v does not require any additional move/copy.\n
+                   v: index in source as variable name.
+                """
+
+                if v not in dst_stack:
+                    return True
+
+                for i, v2 in enumerate(dst_stack):
+                    if v2 == v and stack[i] != v:
+                        return False
+
+                return len(dst_stack) == n_affected - 1 or (v not in stack[len(dst_stack):])
+
+            def get_tmps(excludes: List[int] = []) -> List[int]:
+                """returns list of index"""
+                return [i for i, v in enumerate(stack) if v == -1 and i not in excludes]
+
+            def put_move(from_: int, to_: List[int]):
+                """generates code and updates stack state\n
+                   from_, to_: index of stack starts at top.
+                """
+
+                self._main.put_move(f"#{from_ * 2}", [f"+#{i * 2}" for i in to_])
+
+                v = stack[from_]
+                
+                for i in to_:
+                    stack[i] = v
+
+                stack[from_] = -1
+
+            def put_move_to_tmps(srcs: List[int], tmps_excludes: List[int] = []):
+                for i, v in enumerate(srcs):
+                    tmps = get_tmps(tmps_excludes)
+                    put_move(v, [tmps[i]])
+
+            def main():
+                for v in src_stack:
+                    if is_placed(v):
+                        continue
+
+                    dst_idxs = [i for i, v2 in enumerate(dst_stack) if v2 == v]
+                    dst_idxs_with_value = [i for i in dst_idxs if stack[i] != -1]
+
+                    # any destination address has value. copy required.
+                    if len(dst_idxs_with_value) != 0:
+                        tmps = get_tmps(dst_idxs)
+
+                        # not enough temporary space exist. never happen?
+                        if len(tmps) < len(dst_idxs_with_value):
+                            raise Exception(f"not implemented")
+
+                        put_move_to_tmps(dst_idxs_with_value, tmps_excludes=dst_idxs)
+
+                    src_idx = stack.index(v)
+
+                    put_move(src_idx, dst_idxs)
+
+            # ..., v(N-1), 1, *v(N)=empty, 0
+            self.put_juggling_start()
+
+            # ..., *v(N-size), 1, ..., v(N)=empty, 0
+            self._main.put("<" * src_size * 2)
+
+            clear()
+            main()
+
+            # ..., *v(sizeof src), 1, ..., v(sizeof dst)=empty, 0
+            # or
+            # ..., v(sizeof dst), 1, ..., *v(sizeof src), 1, ..., v(N)=empty, 0
+            self._main.put(">" * src_size * 2)
+
+            if src_size < len(dst_stack):
+                d = len(dst_stack) - src_size
+
+                self._main.put(">+>" * d)
+
+            if src_size > len(dst_stack):
+                d = src_size - len(dst_stack)
+
+                self._main.put("<-<" * d)
+
+            self.put_juggling_end()
 
             return
 

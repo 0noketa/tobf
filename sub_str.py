@@ -83,6 +83,7 @@ class Subsystem_Str(SubsystemBase):
         n, m = calc_small_pair(v, 1)
 
         if m == 1 or n * m < n + m + 5:
+            n = n * m
             self._main.put("+" * n + ">")
         else:
             self._main.put(">" + "+" * n + "[<" + "+" * m + ">-]")

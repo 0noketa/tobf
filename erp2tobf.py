@@ -147,6 +147,7 @@ class Vliw:
         return False
 
     def used(self) -> int:
+        """used sources"""
         if self.stack == None:
             self.calc()
 
@@ -160,10 +161,11 @@ class Vliw:
         return used
 
 
-# target description (tobf does not use vliw for builtin stack-jugggler)
-stack_on_registers = ["x", "y", "z"]  # ["x", "y", "z", "X", "Y", "Z"]
-micro_instructions = []  # ["swap", "dup", "rot", "drop", "+", "-"]
-min_vliw_size = 4
+# target description
+stack_on_registers = []  # ["x", "y", "z", "X", "Y", "Z"]
+named_cells_for_vliw = list(map(str, range(8)))  # ["x", "y", "z", "X", "Y", "Z"]
+micro_instructions = ["swap", "dup", "rot", "drop"]  # ["swap", "dup", "rot", "drop", "+", "-"]
+min_vliw_size = 3
 max_mem_size = 256
 max_rstack_size = 0x100
 max_dstack_size = 0x10000
@@ -477,6 +479,24 @@ def compile(src: List[str]):
     while i < len(src):
         tkn = src[i]
 
+        if tkn in micro_instructions:
+            vliw = Vliw.fetch_vliw(src, i, named_cells_for_vliw, micro_instructions)
+
+            if len(vliw.src) >= min_vliw_size:
+                def push_vliw():
+                    vliw.calc()
+                    used = vliw.used()
+
+                    # rename register 
+                    base = len(named_cells_for_vliw) - used
+                    stack_layout = " ".join([str(int(vliw_dst) - base) for vliw_dst in vliw.stack[base:]])
+
+                    dst.append(f"{dstack_name}:@juggle {vliw.used()} {stack_layout}")
+
+                push_vliw()
+                i += len(vliw.src)
+                continue
+
         vliw = fetch_native_vliw(src, i)
 
         if len(vliw) > 1:
@@ -484,45 +504,6 @@ def compile(src: List[str]):
 
             i += len(vliw)
             continue
-
-        if tkn in micro_instructions:
-            vliw = Vliw.fetch_vliw(src, i, stack_on_registers, micro_instructions)
-
-            if len(vliw.src) >= min_vliw_size:
-                def push_vliw():
-                    vliw.calc()
-
-                    dst.append(f"""# vliw ({" ".join(vliw.src)} : -- {" ".join(vliw.stack)})""")
-
-                    for i in list(reversed(vliw.base_stack))[:vliw.used()]:
-                        append_pop(i)
-
-                    old_cell = ""        
-                    for i in range(len(vliw.base_stack) - vliw.used(), len(vliw.stack)):
-                        cell = vliw.stack[i]
-
-                        if len(cell) == 1:
-                            append_push(f"{cell}", copy=True)
-                            old_cell = ""
-                        elif cell == old_cell:
-                            append_push(f"b")
-                        else:
-                            dst.append(f"copy {cell[0]} b")
-                            i = 1
-                            while i < len(cell):
-                                o = { "+": "add", "-": "sub" }[cell[i]]
-                                v = cell[i + 1]
-                                dst.append(f"copy{o} {v} b")
-
-                                i += 2
-                            append_push(f"b")
-                            old_cell = cell
-
-                    dst.append(f"# end vliw")
-
-                push_vliw()
-                i += len(vliw.src)
-                continue
 
         if tkn == "{":
             append_push_imm(label(src, i))
@@ -669,7 +650,7 @@ def compile(src: List[str]):
     dst.append(f"erp:@end {last_label}")
 
     head = [
-        " ".join([f"_{v}" for v in vars]) + " " + " ".join(stack_on_registers) + " b e tmp0 tmp1",
+        " ".join([f"_{v}" for v in vars]) + " x y z b e tmp0 tmp1",
         "tmp tmp0 tmp1",
         "loadas out code mod_print",
         "loadas in code mod_input",
