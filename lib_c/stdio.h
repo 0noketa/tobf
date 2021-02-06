@@ -15,7 +15,7 @@ feof(file) {
 getchar() {
     int c;
 
-    if (c2bf_eof == 1) {
+    if (c2bf_eof) {
         c = EOF;
     } else {
         c = __c2bf_input;

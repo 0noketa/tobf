@@ -1,4 +1,4 @@
-x y z
+w x y z
 
 loadas out code mod_print
 
@@ -12,6 +12,11 @@ include_bf incbf_sub.bf x y z
 include_c incbf_sub.c 12  c_func 2 y z  x
 
 out:writelnint x
+
+# arrowfuck source file as subroutine
+include_arrowfuck fast incbf_sub.arrowfuck 256 8 w x y z
+
+print w x y z 10
 
 end
 
