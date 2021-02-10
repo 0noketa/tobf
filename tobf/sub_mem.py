@@ -51,68 +51,9 @@ from base import separate_sign, SubsystemBase
 class Subsystem_Memory(SubsystemBase):
     """random-access memory area"""
 
-    def inc_or_dec(self, c, n):
-        for i in range(n // 16):
-            self._main.put(c * 8 + " " + c * 8)
 
-        m = n % 16
-        if m == 0:
-            pass
-        elif m > 8:
-            m = m % 8
-            self._main.put(c * 8 + " " + c * m)
-        else:
-            self._main.put(c * m)
-
-    def inc(self, n):
-        self.inc_or_dec("+", n)
-
-    def dec(self, n):
-        self.inc_or_dec("-", n)
-
-    def clear(self, v):
-        self._main.put_at(v, "[-]")
-
-    def moveadd_global(self, in_addr, out_addrs):
-        self._main.put_at(in_addr, "[")
-
-        for out_addr in out_addrs:
-            self._main.put_at(out_addr, "+")
-
-        self._main.put_at(in_addr, "-]")
-
-    def load_global(self, addr):
-        self._main.put_at(addr, "[")
-        self._main.put("+")
-        self._main.put_at(addr, "-]")
-
-    def store_it(self, out_globals, out_vars):
-        for out_var in out_vars:
-            sign, out_var = separate_sign(out_var)
-
-            if sign == "":
-                v = self._main.addressof(out_var)
-
-                self.clear(v)
-
-        self._main.put("[")
-
-        for out_global in out_globals:
-            self._main.put_at(out_global, "+")
-
-        for out_var in out_vars:
-            sign, out_var = separate_sign(out_var)
-            
-            addr = self._main.addressof(out_var)
-
-            self._main.put_at(addr, "-" if sign == "-" else "+")
-
-        self._main.put("-]")
 
     def mem2_clean(self, fast=False):
-        if not self._mem_initialized:
-            return
-
         # + eos
         size = self.mem_size_ + 2
 
@@ -257,49 +198,27 @@ class Subsystem_Memory(SubsystemBase):
             if self._main.is_var(args[0]):
                 raise Exception("[mem:@set var ...out] is not implemented")
 
-            def put_value(value):
-                if value == "input":
-                    self._main.put(",")
-                elif value == "print":
-                    self._main.put(".")
-                else:
-                    if sign == "":
-                        self._main.put("[-]")
-
-                    value = int(value)
-                    if sign == "-":
-                        self.dec(value)
-                    else:
-                        self.inc(value)
-
             value = self._main.valueof(args[0])
 
-            for address in args[1:]:
-                sign, address = separate_sign(address)
+            for dst in args[1:]:
+                dst_sign, dst = separate_sign(dst)
 
-                if not self._main.is_var(address):
-                    address = self._main.valueof(address)
+                if self._main.is_val(dst):
+                    idx = self._main.valueof(dst)
+                    dst_addr = self.offset(idx * 2 + 1)
 
-                    self._main.put(">" + self.offset(address * 2 + 1))
-
-                    put_value(value) 
-                    
-                    self._main.put("<" * self.offset(address * 2 + 1))
-                else:
-                    addr = self._main.addressof(address)
+                    self._main.put_set(value, f"{dst_sign}#{dst_addr}")
+                elif self._main.is_var(dst):
+                    dst_addr = self._main.addressof(dst)
                     tmp = self._main.get_nearest_tmp(tmps, [self.offset()])
 
-                    self._main.put_move(addr, [f"+#{tmp}"])
-
-                    self._main.put_at(tmp, "[")
-                    self._main.put_at(addr, "+")
-
-                    self._main.put_at(self.offset(2), "+")
-                    self._main.put_at(tmp, "-]")
+                    self._main.put_copy(dst_addr, [f"+#{self.offset(2)}"])
 
                     self._main.put(">" * self.offset())
                     self._main.put(""">>[[>>+<<-]+>>-]<""")
-                    put_value(value)
+
+                    self._main.put_set(value, f"{dst_sign}#0")
+
                     self._main.put("""<[-<<]""")
                     self._main.put("<" * self.offset())
 
@@ -330,8 +249,7 @@ class Subsystem_Memory(SubsystemBase):
 
                     # for next destination
                     if i < len(out_vars) - 1:
-                        self._main.put_move(self.offset(4), [f"+#{self.offset()}"])
-                        self._main.put_move(self.offset(), [f"+#{tmp}", f"+#{self.offset(4)}"])
+                        self._main.put_copy(self.offset(4), [f"+#{self.offset()}"])
 
                     self._main.put(">" * self.offset())
                     self._main.put(""">>[->>[>>+<<-]<<[>>+<<-]+>>]""")
@@ -366,52 +284,24 @@ class Subsystem_Memory(SubsystemBase):
             return
 
         if ins_name in ["@r_move", "@r_copy"]:
-            address = args[0]
+            src = args[0]
 
-            # clear dst of move/copy
-            for name in args[1:]:
-                sign, name = separate_sign(name)
-
-                if sign == "":
-                    v = self._main.addressof(name)
-
-                    self.clear(v)
+            if len(list(filter(self._main.is_var, args[1:]))) != len(args[1:]):
+                raise Exception(f"unknown instruction: [mem:{ins_name}] with non-variable destinations")
 
             # static addressing
-            if self._main.is_val(address):
-                address = self._main.valueof(address)
-                address = self.offset(address * 2 + 1)
+            if self._main.is_val(src):
+                idx = self._main.valueof(src)
+                addr = self.offset(idx * 2 + 1)
 
                 if ins_name == "@r_copy":
-                    out_globals = [address]
-                    out_vars = args[1:]
-                    last = ""
+                    self._main.put_copy(addr, args[1:])
                 else:
-                    out_globals = []
-                    out_vars = args[1:-1]
-                    last = args[-1]
+                    self._main.put_move(addr, args[1:])
+            elif self._main.is_var(src):
+                idx_addr = self._main.addressof(src)
 
-                # copy
-                if len(out_vars) > 1:
-                    self.load_global(address)
-
-                    self.store_it(out_globals, out_vars)
-
-                # move                
-                if last != "":
-                    sign, name = separate_sign(last)
-
-                    v = self._main.addressof(name)
-
-                    self._main.put_at(address, "[")
-                    self._main.put_at(v, "-" if sign == "-" else "+")
-                    self._main.put_at(address, "-]")
-            else:
-                v = self._main.addressof(address)
-
-                self.load_global(v)
-
-                self.store_it([self.offset(2)], ["+" + address])
+                self._main.put_copy(idx_addr, [f"+#{self.offset(2)}"])
 
                 self._main.put(">" * self.offset())
                 self._main.put(""">>[[>>+<<-]+>>-]""")
@@ -422,23 +312,7 @@ class Subsystem_Memory(SubsystemBase):
                 self._main.put("""<<[->>>>[<<+>>-]<<<<<<]>>>>[<<+>>-]<<<<""")
                 self._main.put("<" * self.offset())
 
-                if False:  # ex: from set
-                    self._main.put(">" * self.offset())
-                    self._main.put(""">>[[>>+<<-]+>>-]<""")
-                    put_value(value)
-                    self._main.put("""<[-<<]""")
-                    self._main.put("<" * self.offset())
-
-
-                self._main.put_at(self.offset(2), "[")
-
-                for name in args[1:]:
-                    sign, name = separate_sign(name)
-                    addr = self._main.addressof(name)
-
-                    self._main.put_at(addr, "-" if sign == "-" else "+")
-
-                self._main.put_at(self.offset(2), "-]")
+                self._main.put_move(self.offset(2), args[1:])
 
             return
 

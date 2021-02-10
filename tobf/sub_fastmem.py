@@ -9,7 +9,7 @@
 #     loadas b fastmem 4
 #     print a 10 b 10
 #   currently fastmem is more orthogonal than mem. every combination of args work fine. mem should be rewritten.
-#   do not use for large(>=16) array. code size will easily become *10 .. *100 or more.
+#   do not use for large(>=16) array if use dynamic-addressing. code size will easily become *10 .. *100 or more.
 #   will not be fast on optimized envirionments.
 # init n
 #   initializes for n cells

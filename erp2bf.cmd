@@ -7,7 +7,7 @@
 
 :main
     @if "%~1"=="-help" @(
-        @echo erp2tobf src options
+        @echo erp2bf src options
         @goto :eof
     )
 

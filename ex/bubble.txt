@@ -1,15 +1,13 @@
 n i j k v v2 v3 v4 e r
 
-
-load str 32
-    str:@set number of elements:
-    str:@writeln
-unload str
-
 loadas in code mod_input
-    in:readlnint n
-unload in
+load str 32
+loadas a mem 255
 
+
+str:@=writeln number of elements:
+
+in:readlnint n
 
 # set 1 v2
 inc v2
@@ -19,34 +17,23 @@ ifnotin v 0 1
 endifnotin v 0 1
 
 ifelse v2 e
-    load str 32
-        str:@set error.
-        str:@writeln
-
-        str:@set number must be >=2
-        str:@writeln
-    unload str
+    str:@=writeln error.
+    str:@=writeln number must be >=2
 else v2 e
-    load str 32
-        str:@set EOL separated elements:
-        str:@writeln
-    unload str
-
-    loadas a mem 255
+    str:@=writeln EOL separated elements:
 
 
     # input
-    loadas in code mod_input
-        # clear i
-        copyadd n j
-        while j
-            in:readlnint v
-            a:@w_moveadd v i
 
-            inc i
-            dec j
-        endwhile j
-    unload in
+    # clear i
+    copyadd n j
+    while j
+        in:readlnint v
+        a:@w_moveadd v i
+
+        inc i
+        dec j
+    endwhile j
 
 
     # sort
@@ -77,17 +64,20 @@ else v2 e
 
 
     # output
-    loadas out code mod_print
-        clear i
-        copyadd n j
-        while j
-            a:@r_copy i v
-            out:writelnint v
 
-            inc i
-            dec j
-        endwhile j
-    unload out
+    unload in
+    unload str
+    loadas out code mod_print
+
+    clear i
+    copyadd n j
+    while j
+        a:@r_copy i v
+        out:writelnint v
+
+        inc i
+        dec j
+    endwhile j
 endifelse v2 e
 
 

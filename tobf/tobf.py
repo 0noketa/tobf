@@ -12,9 +12,16 @@
 # syntax:
 #   program: var_decl "\n" instructions "end" "\n"
 #   var_decl: id (" " val)*
-#   instructions: (qid (" " val)* "\n")*
-#   val: digits | "'" | "'" char | qid
+#   instructions: instruction*
+#   instruction: qid (" " val)* "\n" | qid (|" " space_separated) "\n"
+#   val: digits | "'" | "'" char | qid | sign qid
+#   sign: "+" | "-"
 #   qid: id ":" id | id
+# signed args:
+#   if instruction is just for modifing passed variable, "+" means "+=" in C, and "-" means "-=".
+#   if instruction is not just for modifing passed variable (ex: variable as pointer), "-" means breakable variable, and "+" will be ignored.
+#   some instruction ignores this rule for more prior intent (bug of language).
+#   ex: "copy -x ..." and "add ... -x" ignores "-" because "copy" should copy, "add" should add.
 # instructions:
 # bool io_var
 # not io_var
@@ -29,7 +36,7 @@
 #   add/sub/move 1 or 0 to out_vars.
 # set imm ...out_vars_with_sign
 #   every destination can starts with "+" or "-", they means add or sub instead of set.
-#   this description is avairable for similar meaning as arguments of instructions below:
+#   this description is avairable in arguments for instructions below:
 #     bool, not, copy, move
 #   aliases_with_inplicit_signs:
 #     add imm ...out_vars
