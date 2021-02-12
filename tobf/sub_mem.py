@@ -95,6 +95,96 @@ class Subsystem_Memory(SubsystemBase):
     def writable_vars(self) -> bool:
         return ["first", "last"]
 
+    def has_short_move(self, dsts: List[str]) -> bool:
+        if self.array_size() < 2:
+            return False
+
+        for dst in dsts:
+            sign, dst = separate_sign(dst)
+
+            if not self._main.is_sub(dst):
+                return False
+
+            target = cast(SubsystemBase, self._main.get_instance(dst))
+
+            if not target.is_writable_array():
+                return False
+
+            if self.array_size() < 2 or target.array_size() < 2:
+                return False
+            
+            for i in range(1, min(self.array_size(), target.array_size())):
+                if (self.addressof(str(i)) - self.addressof(str(i - 1))
+                        != target.addressof(str(i)) - target.addressof(str(i - 1))):
+                    return False
+
+        return True
+
+    def has_short_copy(self, dsts: List[str]) -> bool:
+        return self.has_short_move(dsts)
+
+    def put_short_array_move(self, dsts: List[str], copy=False):
+        if not self.has_short_move(dsts):
+            raise Exception(f"destination is not compatible")
+
+        base = self.addressof("0")
+        sizes = set([])
+        dsts2: Tuple[int, str, SubsystemBase, int] = []
+
+        for dst in dsts:
+            sign, dst = separate_sign(dst)
+            sub = cast(SubsystemBase, self._main.get_instance(dst))
+
+            size = min(sub.array_size(), self.array_size())
+            sizes |= set([size])
+
+            dsts2.append((
+                size,
+                sign, sub,
+                sub.addressof("0") - base))
+
+        sizes = sorted(list(sizes))
+
+        for i, size in enumerate(sizes):
+            base_idx = 0 if i == 0 else sizes[i - 1]
+            size2 = size - base_idx
+
+            # n = 2
+            # 0, v0, n -> 1, v1, n-1 -> 1, v2, n-2 -> 0
+            self._main.put(">" * self.offset(base_idx * 2 + 2))
+
+            self._main.put("+" * size2)
+
+            self._main.put("[-[>>+<<-]<")
+
+            for dst_size, sign, dst, dst_addr in dsts2:
+                if sign == "":
+                    self._main.put_at(dst_addr, "[-]")
+
+            self._main.put("[")
+
+            if copy:
+                self._main.put(">+<")
+
+            for dst_size, sign, dst, dst_addr in dsts2:
+                o = "-" if sign == "-" else "+"
+
+                self._main.put_at(dst_addr, o)
+
+            self._main.put("-]")
+
+            if copy:
+                self._main.put(">[<+>-]<")
+
+            self._main.put(">+>>]")
+
+            self._main.put("<<[-<<]")
+
+            self._main.put("<" * self.offset(base_idx * 2))
+
+    def put_short_array_copy(self, dsts: List[str]):
+        self.put_short_array_move(dsts, copy=True)
+
     def has_var(self, name: str) -> bool:
         if self._main.is_val(name):
             idx = self._main.valueof(name)
@@ -207,7 +297,7 @@ class Subsystem_Memory(SubsystemBase):
                     idx = self._main.valueof(dst)
                     dst_addr = self.offset(idx * 2 + 1)
 
-                    self._main.put_set(value, f"{dst_sign}#{dst_addr}")
+                    self._main.put_set(value, [f"{dst_sign}#{dst_addr}"])
                 elif self._main.is_var(dst):
                     dst_addr = self._main.addressof(dst)
                     tmp = self._main.get_nearest_tmp(tmps, [self.offset()])

@@ -137,6 +137,17 @@ class SubsystemBase:
     def writable_vars(self) -> List[str]:
         """variables that are allowed direct-write. excludes array indices."""
         return self._pub_vars.copy()
+    def has_short_move(self, dsts: List[str]) -> bool:
+        """True if subsystem has short version of array-to-array move"""
+        return False
+    def has_short_copy(self, dsts: List[str]) -> bool:
+        """True if subsystem has short version of array-to-array move"""
+        return False
+    def put_short_array_move(self, dsts: List[str]):
+        raise Exception(f"not implemented")
+    def put_short_array_copy(self, dsts: List[str]):
+        raise Exception(f"not implemented")
+
     def vars(self) -> List[str]:
         return self._vars.copy()
     def has_var(self, name: str) -> bool:

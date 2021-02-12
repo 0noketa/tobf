@@ -424,9 +424,14 @@ class Tobf:
         if not self.is_var(addr):
             raise Exception(f"{addr}: {type(addr)} is not valid address")
 
-        self.put(">" * self.addressof(addr))
-        self.put(s)
-        self.put("<" * self.addressof(addr))
+        if type(addr) == int and addr < 0:
+            self.put("<" * abs(addr))
+            self.put(s)
+            self.put(">" * abs(addr))
+        else:
+            self.put(">" * self.addressof(addr))
+            self.put(s)
+            self.put("<" * self.addressof(addr))
 
     def put_at_every(self, addrs: List[Union[str, int]], s: str, unique=True):
         used = []
@@ -526,7 +531,7 @@ class Tobf:
             without: List[Union[str, int]] = [],
             ignore_signed=False):
         if type(out_addrs) != list:
-            self.put_clear([out_addrs], True)
+            self.put_clear([out_addrs], ignore_signed=True)
             return
 
         cleared = [self.addressof(i) for i in without]
@@ -590,8 +595,13 @@ class Tobf:
             raise Exception(f"[move from to itself]")
 
         if self.is_sub(in_addr):
-            self.put_move_array(in_addr, out_addrs, tmps)
-            self.put_move_record(in_addr, out_addrs, tmps)
+            in_sub = self.get_instance(in_addr)
+
+            if not self.fast() and in_sub.has_short_move(out_addrs):
+                in_sub.put_short_array_move(out_addrs)
+            else:
+                self.put_move_array(in_addr, out_addrs, tmps)
+                self.put_move_record(in_addr, out_addrs, tmps)
 
             return
 
@@ -624,8 +634,13 @@ class Tobf:
             raise Exception(f"tryed to copy. but no workspace avairable")
 
         if self.is_sub(in_addr):
-            self.put_move_array(in_addr, out_addrs, tmps, copy=True)
-            self.put_move_record(in_addr, out_addrs, tmps, copy=True)
+            in_sub = self.get_instance(in_addr)
+
+            if not self.fast() and in_sub.has_short_copy(out_addrs):
+                in_sub.put_short_array_copy(out_addrs)
+            else:
+                self.put_move_array(in_addr, out_addrs, tmps, copy=True)
+                self.put_move_record(in_addr, out_addrs, tmps, copy=True)
 
             return
 
