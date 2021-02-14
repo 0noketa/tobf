@@ -30,8 +30,8 @@
 # bool -in_var ...out_vars
 # not -in_var ...out_vars
 #   add/sub/move 1 or 0 to out_vars. breaks in_var.
-# bool io_var ...out_vars
-# not io_var ...out_vars
+# bool in_var ...out_vars
+# not in_var ...out_vars
 #   required tmps: 2
 #   add/sub/move 1 or 0 to out_vars.
 # set imm ...out_vars_with_sign

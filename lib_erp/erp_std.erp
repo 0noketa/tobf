@@ -5,12 +5,13 @@
 : not 0 1 if ;
 : toBool 1 0 if ;
 
-: dup2
+: 2dup
     swap dup
     rot dup rot swap ;
 
+
 : min
-    dup2
+    2dup
 : .L1
     < {
         drop
@@ -18,7 +19,7 @@
         swap drop
     } if jmp
 : max
-    dup2 swap 'min.L1 jmp
+    2dup swap 'min.L1 jmp
 
 : while
 	swap dup call {

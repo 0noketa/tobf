@@ -3,15 +3,12 @@
 # memory layout:
 #   0, value0, 0, value1, ..., value(N-1), 0, 0, 0, 0
 # init imm
-#   initialize imm bytes of random-access memory. only once works. imm <= 256.
-# clean imm
+#   initialize imm bytes of random-access memory. imm <= 256.
+#   memory should be cleared before loading.
+# clean
 #   works only after init. clean random-access memory area.
-#   init and resb can be used after clean again.
-# clean imm fast
-#   fast and short version.
-#   doesnt clear values. clears just 1 byte in every cell.
-#   works when every values stored in memory was 0.
-#   on highly optimized bf implementations, this version will not be fast. just short.
+# clean fast
+#   doesnt clear values. works only when next object does not require clean memory area.
 # @set imm_value ...addresses
 #   set constant or use command to random-access memory 
 #   imm_value:
@@ -231,11 +228,7 @@ class Subsystem_Memory(SubsystemBase):
             or super().has_ins(name, args))
 
     def put_clean(self, args: list):
-        if len(args) > 0 and self._main.valueof(args[0]) != self.mem_size_:
-            raise Exception(f"error: mem:@clean with different size")
-            return
-
-        self.mem2_clean(len(args) > 1 and args[1] == "fast")
+        self.mem2_clean("fast" in args)
 
     def put(self, ins_name: str, args: list, tmps: List[int]):
         if ins_name == "init":

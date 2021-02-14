@@ -13,6 +13,7 @@
 #   will not be fast on optimized envirionments.
 # init n
 #   initializes for n cells
+#   does not require clean memory.
 # clean
 #   cleans all
 # @clear
