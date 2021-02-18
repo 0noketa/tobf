@@ -55,9 +55,27 @@ def calc_small_pair(n, vs):
                 y = j
                 s = s2
 
-    return max(x, y), min(x, y)
+    return (max(x, y), min(x, y))
 
+def calc_small_triple(n: int) -> Tuple[int, int, int]:
+    """n: result0 * result1\n
+    {result0} > {result1}\n
+    usage: +{result0}[>+{result1}<-]<+{result2}
+    """
 
+    x = n
+    y = 1
+    d = 0
+
+    for i in range(16):
+        x2, y2 = calc_small_pair(n - i, 1)
+
+        if y2 != 1 and x + y + d > x2 + y2 + i:
+            x = x2
+            y = y2
+            d = i
+
+    return (x, y, d)
 
 class InstructionBase:
     def __init__(self, _name, _least_argc = 0):
@@ -84,6 +102,13 @@ class SubsystemBase:
         self._vars = []
         self._pub_vars = []
         self._size = 0
+
+    def __lt__(self, sub) -> bool:
+        if self._address < sub._address:
+            return True
+        
+        return self._size < sub._size
+
     def name(self):
         return self._name
     def set_base(self, addr: int):
@@ -235,7 +260,70 @@ class Subsystem(SubsystemBase):
 
 
 class MacroProc:
-    def __init__(self, name, params, codes):
+    def __init__(self, name: str, params: List[str], codes: List[List[str]], has_va=False):
         self.name = name
         self.params = params
         self.codes = codes
+        self.has_va = has_va
+        
+    def put(self, name: str, args: List[str], put: Callable[[str, List[str]]], mod="", vars: List[str] = []):
+        """mod, vars: information of module this macro function belongs to"""
+
+        if (len(args) <= len(self.params) if self.has_va
+                else len(args) != len(self.params)):
+            msg_va = "+" if self.has_va else ""
+            raise Exception(f"{self.name} uses {len(self.params)}{msg_va}, got {len(args)}")
+
+        if self.has_va:
+            va = args[len(self.params):]
+            args = args[:len(self.params)]
+
+        for code in self.codes:
+            if len(code) == 0:
+                continue
+
+            ins_name = code[0]
+            ins_args0: List[str] = code[1:]
+            ins_args = []
+            skipping_va = 0
+
+            i = 0
+            while i < len(ins_args0):
+                sign, c = separate_sign(ins_args0[i])
+
+                if ":" in c:
+                    obj, key = c.split(":")
+                else:
+                    obj = c
+                    key = ""
+
+                if obj == "*":
+                    ins_args0.pop(i)
+                    for a in reversed(va):
+                        if key != "":
+                            a = a + ":" + key
+                        ins_args0.insert(i, a)
+
+                    skipping_va = len(va)
+
+                    continue
+
+                if skipping_va > 0:
+                    skipping_va -= 1
+                else:
+                    if obj in self.params:
+                        obj = args[self.params.index(obj)]
+                    elif obj in vars:
+                        obj = mod + ":" + obj
+
+                if key != "":
+                    ins_args.append(sign + obj + ":" + key)
+                else:
+                    ins_args.append(sign + obj)
+
+                i += 1
+
+            put(ins_name, ins_args)
+
+        return
+

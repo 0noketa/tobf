@@ -1,0 +1,14 @@
+
+loadas a code local_sub 'A
+loadas b code local_sub 'b
+loadas c code local_sub 'C
+
+a:put
+b:put
+c:put
+
+unload c
+unload b
+unload a
+
+end

@@ -1,23 +1,149 @@
-it it2 c d sp
+it it2 c d
+# rpn calc
+# words:
+#   values: single_digit
+#   operators: + - P
+# example:
+#   12+ 3+ 4+ P
 
-load code rpn_sub
+load_all
 
-loadas b code mod_jump
-b:@load_callstack 1
 loadas sub consts
-
-# swap them if use large stack
-loadas stack stk 8
-loadas out code mod_print
-
 sub:def 100 read
 sub:def 110 add
 sub:def 120 sub
 sub:def 130 println
 sub:def 140 ln
 
+do
+    call sub:read
 
-code:main
+    ifelse c d
+        vgoto 0
+    else c d
+        vgoto 255
+    endifelse c d
+
+label sub:read
+    clear it
+    input c
+    copy c d
+
+    # spaces
+
+    # 0
+    copy d it
+    jz it  255
+
+    # 255
+    copy d it
+    dec it
+    jz it  255
+
+    sub 9 d
+    copy d it
+    jz it  sub:read
+
+    # 10
+    dec d
+    copy d it
+    jz it  255
+
+    # 32
+    sub 22 d
+    copy d it
+    jz it  sub:read
+
+    # commands
+
+    # 43
+    sub 11 d
+    copy d it
+    jz it  sub:add
+
+    # 45
+    sub 2 d
+    copy d it
+    jz it  sub:sub
+
+    # will be used if c is digit
+    copy d it
+    sub 3 it
+
+    # 80
+    sub 35 d
+    jz d  sub:println
+
+    # num
+    stack:@push it
+    ret
+label sub:add
+    stack:@add
+    ret
+label sub:sub
+    stack:@sub
+    ret
+label sub:println
+    stack:@pop it
+    out:writeint it
+label sub:ln
+    print 10
+    ret
+od
+
+# end main
+
+
+:load_all
+    loadas b code mod_jump
+    b:@load_callstack 4
+
+    # swap them if use large stack
+    loadas stack stk 8
+    loadas out code mod_print
+
+:je c _c _lbl
+    is_var c
+    is_val _c _lbl
+
+    sub _c c
+    not c
+    b:@goto_if c  set _lbl
+
+    b:@auto_label
+:jz c _lbl
+    is_var c
+    is_val _lbl
+
+    not c
+    b:@goto_if c  set _lbl
+
+    b:@auto_label
+:jnz c _lbl
+    is_var c
+    is_val _lbl
+
+    b:@goto_if c  set _lbl
+
+    b:@auto_label
+:do
+    b:@begin_at_current 0
+:label _n
+    b:@at_current _n
+# when goto in block or label is next to goto
+:vgoto _n
+    b:@goto set _n
+:goto _n
+    b:@goto set _n
+
+    b:@auto_label
+:call _n
+    b:@call_set _n
+:ret
+    b:@return
+:od
+    b:@end_at_current 255
+
 
 end
 

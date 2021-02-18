@@ -1,0 +1,15 @@
+c
+
+:init c0
+    is_val c0
+
+    set c0 c 
+    write_lit initialized for
+    print 32 c 10
+
+:clean
+    write_lit cleaned sub for
+    print 32 c 10
+
+
+end

@@ -5,11 +5,13 @@
 #   calls subsystem_name:init with args. and names as alias_name
 # unload subsystem_name ...args
 #   calls subsystem_name:clean with args. deallocates memory area for subsystem.
-# public ...vars
-#   unavairable in main program.
-#   declares variables as public.
-#   public variables can be copied/moved from/to objects with similar interface via copy/move instruction.
 
+# subsystem code
+#   size: number of variables declared in module
+#   code:init module_name ...args
+#     instantiates "module_name.txt". and uses macro function :init with args
+#   code:clean ...args
+#     uses macro function :clean with args. and removes instance.
 # subsystem consts
 #   size: 0
 #   consts:init
@@ -61,75 +63,89 @@ from base import Subsystem, calc_small_pair, src_extension, separate_sign, Subsy
 
 
 class Instruction_DefineConst(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=2)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase):
+        super().__init__(name, _least_argc=2)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
         v = args[0]
         names = args[1:]
 
         for name in names:
-            self._sub.def_const(name, main.valueof(v))
+            self.sub_.def_const(name, main.valueof(v))
 
 class Instruction_IncrementConst(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase, _decrement=False):
-        super().__init__(_name, _least_argc=1)
-        self._sub = _sub
-        self._decrement = _decrement
+    def __init__(self, name, sub: SubsystemBase, decrement=False):
+        super().__init__(name, _least_argc=1)
+        self.sub_ = sub
+        self.decrement_ = decrement
 
     def put(self, main: Tobf, args:list):
         for name in args:
-            if self._decrement:
+            if self.decrement_:
                 d = -1
             else:
                 d = 1
-            self._sub.replace_const(name, int(self._sub.valueof(name)) + d)
+            self.sub_.replace_const(name, int(self.sub_.valueof(name)) + d)
 
 class Instruction_RedefineConst(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=2)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase):
+        super().__init__(name, _least_argc=2)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
-        v = args[0]
+        v = main.valueof(args[0])
         for name in args[1:]:
-            self._sub.replace_const(name, main.valueof(v))
+            self.sub_.replace_const(name, v)
+
+class Instruction_AddConst(InstructionBase):
+    def __init__(self, name, sub: SubsystemBase, subtract=False):
+        super().__init__(name, _least_argc=2)
+        self.sub_ = sub
+        self.subtract_ = subtract
+    def put(self, main: Tobf, args:list):
+        v = main.valueof(args[0])
+
+        if self.subtract_:
+            v = -v
+
+        for name in args[1:]:
+            self.sub_.replace_const(name, self.sub_.valueof(name) + v)
 
 class Instruction_DefineEnum(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=1)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase):
+        super().__init__(name, _least_argc=1)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
         for name in args:
-            self._sub.def_enum(name)
+            self.sub_.def_enum(name)
 
 class Instruction_DefineVar(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase):
-        super().__init__(_name, _least_argc=1)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase):
+        super().__init__(name, _least_argc=1)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
         for name in args:
-            self._sub.def_var(name)
+            self.sub_.def_var(name)
 
 class Instruction_Init(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase, _least_argc=0):
-        super().__init__(_name, _least_argc=_least_argc)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase, _least_argc=0):
+        super().__init__(name, _least_argc=_least_argc)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
-        self._sub.put_init(args)
+        self.sub_.put_init(args)
 
 class Instruction_Clean(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase, _least_argc=0):
-        super().__init__(_name, _least_argc=_least_argc)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase, _least_argc=0):
+        super().__init__(name, _least_argc=_least_argc)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
-        self._sub.put_clean(args)
+        self.sub_.put_clean(args)
 
 class Instruction_Pass(InstructionBase):
-    def __init__(self, _name, _sub: SubsystemBase, _least_argc=0):
-        super().__init__(_name, _least_argc=_least_argc)
-        self._sub = _sub
+    def __init__(self, name, sub: SubsystemBase, _least_argc=0):
+        super().__init__(name, _least_argc=_least_argc)
+        self.sub_ = sub
     def put(self, main: Tobf, args:list):
-        self._sub.put(self._name, args)
+        self.sub_.put(self._name, args)
 
 class Subsystem_ConstSet(SubsystemBase):
     """constant definitions"""
@@ -154,7 +170,9 @@ class Subsystem_Consts(SubsystemBase):
 
         self.add_ins(Instruction_DefineConst("def", self))
         self.add_ins(Instruction_IncrementConst("inc", self))
-        self.add_ins(Instruction_IncrementConst("dec", self, _decrement=True))
+        self.add_ins(Instruction_IncrementConst("dec", self, decrement=True))
+        self.add_ins(Instruction_AddConst("add", self))
+        self.add_ins(Instruction_AddConst("sub", self, subtract=True))
         self.add_ins(Instruction_RedefineConst("redef", self))
 
 class Subsystem_Enums(SubsystemBase):
@@ -239,8 +257,8 @@ class Subsystem_Vars(SubsystemBase):
 
 
 class Subsystem_Code(SubsystemBase):
-    def __init__(self, tobf: Tobf, _name: str, args: List[Union[str, int]], instantiate: Callable[[int, Subsystem, List[str]], int]):
-        super().__init__(tobf, _name)
+    def __init__(self, tobf: Tobf, name: str, args: List[Union[str, int]], instantiate: Callable[[int, Subsystem, List[str]], int]):
+        super().__init__(tobf, name)
         self._main = cast(Tobf, self._main)
 
         self._macs = {}
@@ -299,33 +317,27 @@ class Subsystem_Code(SubsystemBase):
 
         mac = self._macs[name]
 
-        if len(mac.params) != len(args):
-            raise Exception(f"{name} uses {len(mac.params)} args, got {len(args)}")
-
-        for c in mac.codes:
-            c2 = c.copy()
-
-            for i in range(len(c2)):
-                sign, name = separate_sign(c2[i])
-
-                if ":" in name:
-                    sfix = name[name.index(":"):]
-                    name = name[:name.index(":")]
-                else:
-                    sfix = ""
-
-                if name in mac.params:
-                    name = args[mac.params.index(name)]
-                elif i > 0 and (name in self._vars):
-                    name = self._name + ":" + name
-
-                c2[i] = sign + name + sfix
-
-            ins_name = c2[0]
-            ins_args = c2[1:]
-
-            if ins_name in self._macs.keys():
-                self.put(ins_name, ins_args, tmps)
+        def put_(name, args):
+            if name in self._macs.keys():
+                self.put(name, args, tmps)
             else:
-                self._main.put_invoke(ins_name, ins_args, tmps)
+                self._main.put_invoke(name, args, tmps)
+
+        mac.put(name, args, put_, mod=self.name(), vars=self._vars)
+
+        return
+
+class Subsystem_Reserved(SubsystemBase):
+    def __init__(self, tobf: Tobf, name: str, args: List[Union[str, int]], instantiate: Callable[[int, Subsystem, List[str]], int]):
+        super().__init__(tobf, name)
+        self._main = cast(Tobf, self._main)
+
+        if len(args) > 0:
+            size = self._main.valueof(args[0])
+        else:
+            size = 8
+
+        self.resize(size)
+
+        instantiate(self.size(), self, [])
 

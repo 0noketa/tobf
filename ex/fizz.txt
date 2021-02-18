@@ -19,14 +19,14 @@ while j
     ! copy f | sub 3 <- t
     ifelse t +e
     else t -e
-        print 'F 'I 'Z 'Z
+        write_lit  FIZZ
         clear n f
     endifelse t -e
 
     ! copy b | sub 5 <- t
     ifelse t +e
     else t -e
-        print 'B 'U 'Z 'Z
+        write_lit  BUZZ
         clear n b
     endifelse t -e
 

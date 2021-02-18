@@ -1,12 +1,17 @@
-n i j k v v2 v3 v4 e r
+t  n i j k v v2 v3 v4 e r
+tmp t
 
+# :main
+
+# reserves single area for in/out
+load resv 9
+
+loadas a mem 256
+
+unload resv
 loadas in code mod_input
-load str 32
-loadas a mem 255
 
-
-str:@=writeln number of elements:
-
+writeln_lit  number of elements:
 in:readlnint n
 
 # set 1 v2
@@ -17,36 +22,47 @@ ifnotin v 0 1
 endifnotin v 0 1
 
 ifelse v2 e
-    str:@=writeln error.
-    str:@=writeln number must be >=2
+    writeln_lit  error.
+    writeln_lit  number must be >=2
 else v2 e
-    str:@=writeln EOL separated elements:
+    writeln_lit  EOL separated elements:
+    read_array a n in
+
+    sort_array a n
+
+    unload in
+    loadas out code mod_print
+
+    write_array a n out
+endifelse v2 e
+
+# end main
 
 
-    # input
-
-    # clear i
-    copyadd n j
+:for i j
+    clear i
     while j
-        in:readlnint v
-        a:@w_moveadd v i
-
+:endfor i j
         inc i
         dec j
     endwhile j
 
+:read_array a n in
+    copyadd n j
+    for i j
+        in:readlnint v
+        a:@w_moveadd v i
+    endfor i j
 
-    # sort
-
+:sort_array a n
     # r is true when any swap happend
     inc r
     while r
         dec r
+        set 1 k
 
-        clear i k
-        inc k
-        ! copy n | dec <- j
-        while j
+        ! copyadd n | dec <- j
+        for i j
             a:@r_copy i v v3
             a:@r_copy k v2 v4
 
@@ -57,28 +73,16 @@ else v2 e
                 set 1 r
             endifgt v3 v4 e
 
-            inc i k
-            dec j
-        endwhile j
+            inc k
+        endfor i j
     endwhile r
 
-
-    # output
-
-    unload in
-    unload str
-    loadas out code mod_print
-
-    clear i
+:write_array a n out
     copyadd n j
-    while j
+    for i j
         a:@r_copy i v
         out:writelnint v
-
-        inc i
-        dec j
-    endwhile j
-endifelse v2 e
+    endfor i j
 
 
 end

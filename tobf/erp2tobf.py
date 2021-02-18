@@ -71,30 +71,29 @@ class Vliw:
         base_stack = Vliw.base_stack if base_stack == None else base_stack
         instructions = Vliw.instructions if instructions == None else instructions
         size = len(base_stack)
+
+        by_arity: List[List[str]] = [
+            [],
+            ["dup", "drop"],
+            ["swap", "over", "2dup", "2drop", "+", "-"],
+            ["rot"],
+            ["2swap", "2over"],
+            [],
+            ["2rot"]
+        ]
+
         j = i
         while j < len(src) and (src[j] in instructions):
-            if src[j] in ["swap", "rot"]:
-                j += 1
-                continue
+            matched = False
 
-            if src[j] == "drop":
-                if size == 0:
+            for k, oprs in enumerate(by_arity):
+                if src[j] in oprs:
+                    if size >= k:
+                        matched = True
+                    
                     break
-                size -= 1
-                j += 1
-                continue
 
-            if src[j] == "dup":
-                if size == 0:
-                    break
-                size += 1
-                j += 1
-                continue
-
-            if src[j] in ["+", "-"]:
-                if size < 2:
-                    break
-                size -= 1
+            if matched:
                 j += 1
                 continue
 
@@ -107,6 +106,9 @@ class Vliw:
         self.src = src
         self.base_stack = Vliw.base_stack if base_stack == None else base_stack
         self.stack: List[str] = None
+        self.uses_tuple_jugglers = False
+
+        self.calc()
 
     def calc(self) -> int:
         self.stack = self.base_stack.copy()
@@ -128,7 +130,60 @@ class Vliw:
                 x = self.stack.pop()
                 self.stack.append(x)
                 self.stack.append(x)
+            elif i == "over":
+                y = self.stack.pop()
+                x = self.stack.pop()
+                self.stack.append(x)
+                self.stack.append(y)
+                self.stack.append(x)
+            elif i == "2dup":
+                self.uses_tuple_jugglers = True
+                x2 = self.stack.pop()
+                x = self.stack.pop()
+                self.stack.append(x)
+                self.stack.append(x2)
+                self.stack.append(x)
+                self.stack.append(x2)
+            elif i == "2swap":
+                self.uses_tuple_jugglers = True
+                y2 = self.stack.pop()
+                y = self.stack.pop()
+                x2 = self.stack.pop()
+                x = self.stack.pop()
+                self.stack.append(y)
+                self.stack.append(y2)
+                self.stack.append(x)
+                self.stack.append(x2)            
+            elif i == "2rot":
+                self.uses_tuple_jugglers = True
+                z2 = self.stack.pop()
+                z = self.stack.pop()
+                y2 = self.stack.pop()
+                y = self.stack.pop()
+                x2 = self.stack.pop()
+                x = self.stack.pop()
+                self.stack.append(y)
+                self.stack.append(y2)
+                self.stack.append(z)
+                self.stack.append(z2)
+                self.stack.append(x)
+                self.stack.append(x2)            
+            elif i == "2over":
+                self.uses_tuple_jugglers = True
+                y2 = self.stack.pop()
+                y = self.stack.pop()
+                x2 = self.stack.pop()
+                x = self.stack.pop()
+                self.stack.append(x)
+                self.stack.append(x2)
+                self.stack.append(y)
+                self.stack.append(y2)
+                self.stack.append(x)
+                self.stack.append(x2)            
             elif i == "drop":
+                self.stack.pop()
+            elif i == "2drop":
+                self.stack.pop()
                 self.stack.pop()
             elif i in ["+", "-"]:
                 y = self.stack.pop()
@@ -165,7 +220,7 @@ class Vliw:
 # target description
 stack_on_registers = []  # ["x", "y", "z", "X", "Y", "Z"]
 named_cells_for_vliw = list(map(str, range(8)))  # ["x", "y", "z", "X", "Y", "Z"]
-micro_instructions = ["swap", "dup", "rot", "drop"]  # ["swap", "dup", "rot", "drop", "+", "-"]
+micro_instructions = ["swap", "dup", "rot", "over", "2swap", "2dup", "2rot", "2over", "drop"]  # ["swap", "dup", "rot", "over", "drop", "+", "-"]
 min_vliw_size = 3
 max_mem_size = 256
 max_rstack_size = 0x100
@@ -173,7 +228,8 @@ max_dstack_size = 0x10000
 
 
 jumpless_words = [
-    "swap", "dup", "rot", "drop",
+    "swap", "dup", "rot", "over", "drop",
+    "2swap", "2dup", "2rot", "2over", "2drop",
     "+", "-", "*", "/", "<", "=", "<>",
     "getc", "putc", "getInt", "putInt", ",", ".", "ln",
     "inc", "dec", "pInc", "pDec", "!", "@", "!b", "@b"
@@ -181,7 +237,8 @@ jumpless_words = [
 builtin_words = [
     ":", "{", "}", ";",
     "jmp", "call", "if",
-    "swap", "dup", "rot", "drop",
+    "swap", "dup", "rot", "over", "drop",
+    "2swap", "2dup", "2rot", "2over", "2drop",
     "+", "-", "*", "/", "<", "=", "<>",
     "getc", "putc", "getInt", "putInt", ",", ".", "ln",
     "inc", "dec", "pInc", "pDec", "!", "@", "!b", "@b"
@@ -469,7 +526,7 @@ def compile(src: List[str]):
         for i in range(i, len(src)):
             tkn = src[i]
 
-            if tkn in ["swap", "dup", "rot", "drop", "+", "-"]:
+            if tkn in ["swap", "dup", "rot", "over", "2swap", "2dup", "2rot", "2over", "drop", "+", "-"]:
                 vliw.append(tkn)
             elif tkn == "inc":
                 vliw.append("1+")
@@ -497,9 +554,8 @@ def compile(src: List[str]):
         if tkn in micro_instructions:
             vliw = Vliw.fetch_vliw(src, i, named_cells_for_vliw, micro_instructions)
 
-            if len(vliw.src) >= min_vliw_size:
+            if len(vliw.src) >= min_vliw_size or vliw.uses_tuple_jugglers:
                 def push_vliw():
-                    vliw.calc()
                     used = vliw.used()
 
                     # rename register 
@@ -559,8 +615,12 @@ def compile(src: List[str]):
             dst.append(f"endifelse x e")
         elif tkn == "drop":
             dst.append(f"{dstack_name}:@pop")
-        elif tkn in ["dup", "swap", "rot"]:
+        elif tkn == "2drop":
+            dst.append(f"{dstack_name}:@calc drop drop")
+        elif tkn in ["dup", "swap", "rot", "over"]:
             dst.append(f"{dstack_name}:@{tkn}")
+        elif (tkn[1:] in ["dup", "swap", "rot", "over"]) and tkn[0].isdigit() and (int(tkn[0]) in range(3)):
+            dst.append(f"{dstack_name}:@calc {tkn}")
         elif tkn == "getc":
             dst.append(f"{dstack_name}:@push input")
         elif tkn == "putc":
@@ -674,6 +734,7 @@ def compile(src: List[str]):
 
     mem_loaders = [
         (rstack_size, f"loadas {rstack_name} stk {rstack_size}"),
+        # does not use @calc version of 2dup 2swap..., everything in @juggle
         (dstack_size, f"loadas {dstack_name} stk {dstack_size}")
     ]
 

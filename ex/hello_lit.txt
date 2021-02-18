@@ -1,0 +1,6 @@
+t
+tmp t
+
+writeln_lit  Hello, world!
+
+end

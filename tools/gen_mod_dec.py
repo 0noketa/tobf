@@ -86,31 +86,31 @@ print(f"""
 
 :@clear v
     @set{" 0" * n_cols} v
-:_@move _f x y
+:_@move _f x *
     @check x
-    @check y""")
+    @check *""")
 print(rcols("""
-    _f x:col{0} y:col{0}"""))
+    _f x:col{0} *:col{0}"""))
 
 print(f"""
-:@move x y
-    _@move move x y
-:@copy x y
-    _@move _copy x y
+:@move x *
+    _@move move x *
+:@copy x *
+    _@move _copy x *
 
  # via o
-:_copyadd x y
+:_copyadd x *
     move x o
-    moveadd o x y
+    moveadd o x *
 :_copyadd{n_cols} x{rcols(" y{0}")}
     move x o
     moveadd o x{rcols(" y{0}")}
-:_copy x y
+:_copy x *
     clear y
-    _copyadd x y
-:_copysub x y
+    _copyadd x *
+:_copysub x *
     move x o
-    movesub o x y
+    movesub o x *
 :_copysub{n_cols} x{rcols(" y{0}")}
     move x o
     move o +x{rcols(" -y{0}")}

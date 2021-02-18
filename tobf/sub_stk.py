@@ -77,7 +77,7 @@
 #   pop values and push copied values.
 #   ex:
 #     # a b c d -- a b c d  c b a d
-#     @juggle 4  3 2 1 0  1 2 3 0
+#     @juggle 4  0 1 2 3  2 1 0 3
 # @empty out_var
 #   1 if stack is empty
 

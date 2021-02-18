@@ -17,31 +17,22 @@ set 10 nl
     ! set 20 | while <- pos:x
         set 1 m
 
-        ! copy pos | copysub v <- tmp
-        ! bool <- tmp:x | tmp:y
-        ! moveadd tmp:x | not <- tmp:y
-        if tmp:y
+        if_poseq pos v
             print one
             dec m
-        endif tmp:y
+        endif_poseq
 
-        ! copy pos | copysub v2 <- tmp
-        ! bool <- tmp:x | tmp:y
-        ! moveadd tmp:x | not <- tmp:y
-        if tmp:y
+        if_poseq pos v2
             if m
                 ! inc | print | dec <- one
             endif m
-        endif tmp:y
+        endif_poseq
 
-        ! copy pos | copysub v3 <- tmp
-        ! bool <- tmp:x | tmp:y
-        ! moveadd tmp:x | not <- tmp:y
-        if tmp:y
+        if_poseq pos v3
             if m
                 ! inc one | print | dec one <- one
             endif m
-        endif tmp:y
+        endif_poseq
 
         if m
             print dot
@@ -50,5 +41,14 @@ set 10 nl
 
     print nl
 ! dec | endwhile <- pos:y
+
+
+:if_poseq pos pos2
+    ! copy pos | copysub pos2 <- tmp
+    ! bool <- tmp:x | tmp:y
+    ! moveadd tmp:x | not <- tmp:y
+    if tmp:y
+:endif_poseq
+    endif tmp:y
 
 end

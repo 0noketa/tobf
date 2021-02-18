@@ -3,7 +3,7 @@
 
 from base import SubsystemBase, InstructionBase, split
 from tobf import Tobf
-from subsystems import Subsystem_ConstSet, Subsystem_Consts, Subsystem_Enums, Subsystem_Vars, Subsystem_Code
+from subsystems import Subsystem_Reserved, Subsystem_ConstSet, Subsystem_Consts, Subsystem_Enums, Subsystem_Vars, Subsystem_Code
 from sub_mem import Subsystem_Memory
 from sub_fastmem import Subsystem_FastMem
 from sub_slowmem import Subsystem_SlowMem
@@ -30,9 +30,9 @@ if __name__ == "__main__":
     dst = None
 
     for arg in args:
-        if arg == "-v":
+        if arg in ["-v", "-verbose"]:
             verbose = True
-        elif arg == "-f":
+        elif arg in ["-f", "-fast"]:
             fast = True
         elif arg == "-no_tmp":
             tmps = []
@@ -58,6 +58,7 @@ if __name__ == "__main__":
     compiler.install_subsystem("enums", Subsystem_Enums)
     compiler.install_subsystem("consts", Subsystem_Consts)
     compiler.install_subsystem("constset", Subsystem_ConstSet)
+    compiler.install_subsystem("resv", Subsystem_Reserved)
     compiler.install_subsystem("vars", Subsystem_Vars)
     compiler.install_subsystem("code", Subsystem_Code)
     compiler.install_subsystem("mem", Subsystem_Memory)

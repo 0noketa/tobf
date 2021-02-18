@@ -1,0 +1,21 @@
+
+
+loadas x vars a b c
+loadas y vars a b c
+
+x:set 'A 'B 'C
+y:set 'a 'b 'c
+
+cpy '@ x y
+
+pt x
+pt y
+
+:cpy src *
+    set src *:a
+:pt *
+    print *:a *:b *:c 10
+
+end
+
+

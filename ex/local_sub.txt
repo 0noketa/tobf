@@ -1,0 +1,12 @@
+
+:init c
+    loadas local:x code local_sub_sub c
+
+:clean
+    unload local:x
+
+:put
+    write_lit uses
+    print 32 local:x:c 10
+
+end

@@ -22,7 +22,14 @@
 #   if instruction is not just for modifing passed variable (ex: variable as pointer), "-" means breakable variable, and "+" will be ignored.
 #   some instruction ignores this rule for more prior intent (bug of language).
 #   ex: "copy -x ..." and "add ... -x" ignores "-" because "copy" should copy, "add" should add.
+# local names:
+#   if id has prefix "local:", it will be replaced with instance-specific name.
+#   it can be used for instance name (currently no other purpose exists).
 # instructions:
+# public ...vars
+#   do nothing in main program.
+#   declares variables as public.
+#   public variables can be copied/moved from/to objects with similar interface via copy/move instruction.
 # bool io_var
 # not io_var
 #   required tmps: 1
@@ -170,6 +177,9 @@
 #   injects compiled 4DChess code.
 # include_c file_name stack_size function_name ...in_vars out_var
 #   uses C function.
+# write_lit ...literals
+# writeln_lit ...literals
+#   required tmps: 1 or 2
 # end
 #   can not be omitted
 
@@ -178,8 +188,9 @@ from typing import cast, Union, List, Tuple, Set, Dict, Type
 import io
 import statistics
 import os
+import hashlib
 
-from base import Subsystem, split, split_list, separate_sign, calc_small_pair, MacroProc
+from base import Subsystem, split, split_list, separate_sign, calc_small_pair, calc_small_triple, MacroProc
 
 from brainfuck_with_mdm import ArrowFuck, FDChess
 from bfa import Bfa
@@ -210,7 +221,11 @@ class Tobf:
         self.subsystem_templates_: Dict[str, Subsystem] = {}
         self.subsystem_instances_: List[Subsystem] = []
         self.subsystem_instances_by_name_: Dict[str, Subsystem] = {}
-        self._concatnative_macros: Dict[str, str] = {}
+        self.concatnative_macros_: Dict[str, str] = {}
+        self.macros_: Dict[str, MacroProc] = {}
+
+        # unique file number
+        self.n_files = 0
 
     def fast(self) -> bool:
         return self.fast_
@@ -227,7 +242,7 @@ class Tobf:
     def addressof_free_area(self, size: int) -> int:
         """malloc() for subsystems"""
         if len(self.subsystem_instances_) > 0:
-            self.subsystem_instances_.sort(key=(lambda x: x.offset(0)))
+            self.subsystem_instances_.sort()
 
         base = len(self.vars_)
 
@@ -235,6 +250,7 @@ class Tobf:
             addr = sub.offset(0)
 
             if addr - base >= size:
+
                 return base
 
             base = addr + sub.size()
@@ -1110,10 +1126,10 @@ class Tobf:
 
         if name == "!$":
             if len(args) == 0:
-                self._concatnative_macros = {}
+                self.concatnative_macros_ = {}
                 return
 
-            self._concatnative_macros[args[0]] = args[1:]
+            self.concatnative_macros_[args[0]] = args[1:]
 
             return
 
@@ -1124,7 +1140,7 @@ class Tobf:
             args2 = []
             for arg in args:
                 if arg.startswith("$!"):
-                    args2.extend(self._concatnative_macros[arg[2:]])
+                    args2.extend(self.concatnative_macros_[arg[2:]])
                 else:
                     args2.append(arg)
             args = args2
@@ -1430,6 +1446,78 @@ class Tobf:
 
             return True
 
+        if name in ["write_lit", "writeln_lit"]:
+            tail = "\n" if name == "writeln_lit" else ""
+            tmp = self.get_nearest_tmp(tmps, [0])
+
+            if not self.fast() and len(tmps) > 1:
+                tmps.remove(tmp)
+                tmp2 = self.get_nearest_tmp(tmps, [tmp])
+                tmps.append(tmp)
+
+                if abs(tmp - tmp2) > 1:
+                    tmp2 = -1 
+            else:
+                tmp2 = -1
+
+            self.put(">" * tmp)
+
+            c0 = 0
+            for c in [ord(s) for s in " ".join(args) + tail]:
+                if c > c0:
+                    o = "+"
+                    d = c - c0
+                else:
+                    o = "-"
+                    d = c0 - c
+
+                if tmp2 != -1:
+                    n, m, d2 = calc_small_triple(d)
+
+                    # 7: len(">[<>-]<")
+                    if d > n + m + 7 + d2:
+                        self.put("<" * tmp)
+                        self.put(">" * tmp2)
+
+                        self.put(("+" * n) + "[")
+                        self.put("<" * tmp2)
+                        self.put(">" * tmp)
+
+                        self.put(o * m)
+
+                        self.put("<" * tmp)
+                        self.put(">" * tmp2)
+                        self.put("-]")
+
+                        self.put("<" * tmp2)
+                        self.put(">" * tmp)
+
+                        self.put(o * d2)
+                    else:
+                        self.put(o * d)
+                else:
+                    self.put(o * d)
+
+                self.put(".")
+
+                c0 = c
+
+            self.put("[-]")
+            self.put("<" * tmp)
+
+            return True
+
+        if name in self.macros_.keys():
+            proc = self.macros_[name]
+
+            def put_(name, args):
+                self.put_invoke(name, args, tmps=tmps)
+
+            proc.put(name, args, put_, [])
+
+            return
+
+
         raise Exception(f"unknown instruction {name}")
 
     def compile_instruction(self, src: Union[str, List[str]]):
@@ -1454,7 +1542,7 @@ class Tobf:
 
         return s
 
-    def compile_all(self, src: list, comments=False):
+    def compile_all(self, src: List[List[str]], comments=False):
         for i in src:
             if comments:
                 self.put(self.escape_comment(" ".join(i)))
@@ -1464,8 +1552,17 @@ class Tobf:
     def compile_file(self, file_name, comments=False):
         pub_vars, vars, macros = self.read_file(file_name)
 
+        in_subdir = os.path.sep in file_name
+
+        if in_subdir:
+            self.inc_dirs_.append(os.path.dirname(file_name))
+
         self.vars_ = self.base_vars_ + vars
+        self.macros_ = macros
         self.compile_all(macros["main"].codes, comments)
+
+        if in_subdir:
+            self.inc_dirs_.pop()
 
     def find_dir(self, file: str) -> str:
         for d in reversed(self.inc_dirs_):
@@ -1477,12 +1574,12 @@ class Tobf:
     def read_file(self, file: str) -> Tuple[List[str], List[str], Dict[str, MacroProc]]:
         """returns (public_vars, vars, macros)"""
 
+        self.n_files += 1
+
         file_dir = self.find_dir(file)
-        dir_changed = os.path.sep in file
         file = os.path.abspath(os.path.join(file_dir, file))
         
-        if dir_changed:
-            self.inc_dirs_.append(os.path.dirname(file))
+        local_pfx = f"__tobf_local_{self.n_files}__"
 
         pub_vs = set([])
         vs = []
@@ -1505,7 +1602,13 @@ class Tobf:
             if line.startswith("#"):
                 continue
 
-            cod = split(line)
+            cod = []
+            
+            for tkn in split(line):
+                if tkn.startswith("local:"):
+                    tkn = local_pfx + tkn[6:]
+
+                cod.append(tkn)
 
             if cod[0] == "public":
                 pub_vs |= set(cod[1:])
@@ -1519,7 +1622,11 @@ class Tobf:
                     ms[label] = MacroProc(label, [], [])
 
                 if len(ms[label].params) == 0:
-                    ms[label].params = cod[1:].copy()
+                    if len(cod) > 0 and cod[-1] == "*":
+                        ms[label].has_va = True
+                        ms[label].params = cod[1:-1]
+                    else:
+                        ms[label].params = cod[1:]
 
                 continue
 
@@ -1528,8 +1635,6 @@ class Tobf:
 
             ms[label].codes.append(cod)
 
-        if dir_changed:
-            self.inc_dirs_.pop()
 
         pub_vs = [v for v in vs if v in pub_vs]
 
