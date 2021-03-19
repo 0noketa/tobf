@@ -107,6 +107,9 @@ class SubsystemBase:
         if self._address < sub._address:
             return True
         
+        if self._address > sub._address:
+            return False
+        
         return self._size < sub._size
 
     def name(self):
@@ -283,6 +286,8 @@ class MacroProc:
                 continue
 
             ins_name = code[0]
+            if ins_name in self.params:
+                ins_name = args[self.params.index(ins_name)]
             ins_args0: List[str] = code[1:]
             ins_args = []
             skipping_va = 0

@@ -156,7 +156,7 @@
 #       b x d
 # !!
 #   remove all macro. no purpose.
-# !! name ...
+# !$ name ...
 #   define macro. macro is avairable as $!name in args of !
 # bf src
 #   inline brainfuck.
@@ -554,6 +554,8 @@ class Tobf:
 
         for addr in out_addrs:
             sign, addr = separate_sign(addr)
+            addr = self.addressof(addr)
+
             if addr in cleared:
                 continue
 

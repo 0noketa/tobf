@@ -106,7 +106,7 @@ print(f"""
     move x o
     moveadd o x{rcols(" y{0}")}
 :_copy x *
-    clear y
+    clear *
     _copyadd x *
 :_copysub x *
     move x o
@@ -138,10 +138,10 @@ print(f"""
 
 :@inc x
     @check x
-    _inc_a x 9 0 inc
+    _inc_col0 x 9 0 inc
 :@dec x
     @check x
-    _inc_a x 0 9 dec
+    _inc_col0 x 0 9 dec
 
 :_copyifgt9 v n o
     _copy v n
