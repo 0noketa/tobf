@@ -1,15 +1,13 @@
 
 # ZaYen's Hardfuck(https://esolangs.org/wiki/Hardfuck) to Brainfuck compiler
-# warrning:
-#   currently, behavior of "@" is unclear. this implementation should be incorrect. do not use this.
-#
-#   this compiler stores result of '@' at current position and no other behavior exists. can not run Helloworld.
-#   maybe "/" is correct. use only this.
+# limitation:
+#   '[' inside loop is not implemented.
 # memory layout:
 #   [0] * size  # data
 #   + [(i * 4) & 0xFF for i in range(size)]  # plane for pre-calculated results of "@"
 #   + [0] * size  # plane for temporaly used for copying results of "@"
 #   + [0] + [1] * (size - 1)  # plane for "/"
+import sys
 import io
 
 
@@ -18,6 +16,9 @@ class Hardfuck:
     def compile(self, src: io.TextIOWrapper, dst: io.TextIOWrapper, mem_size: int = 0x100, clean = True, short = True) -> int:
         """returns memory size in bf"""
         s = "".join([c for c in src.read() if c in "><+-,.[]@/"])
+
+        if not Hardfuck.check(s):
+            return 0
 
         # "," <-> "."
         s = s.replace(",", " ").replace(".", ",").replace(" ", ".")
@@ -80,8 +81,8 @@ class Hardfuck:
                 dst.write(s[:const])
                 dst.write((">" * mem_size * const_plane_idx) + "["
                     + (">" * mem_size) + "+"
-                    + ("<" * mem_size * tmp_plane_idx) + "+"
-                    + (">" * mem_size * const_plane_idx) + "-]"
+                    + ("<" * mem_size * 2) + "<+>"
+                    + (">" * mem_size) + "-]"
                     + (">" * mem_size) + "["
                     + ("<" * mem_size) + "+"
                     + (">" * mem_size) + "-]"
@@ -96,21 +97,68 @@ class Hardfuck:
                 s = ""
 
         if clean:
-            # init plane for /
+            # clean plane for /
             if rewind_plane_idx != -1:
                 dst.write(">" * mem_size * rewind_plane_idx)
-                dst.write(">" * mem_size)
-                dst.write("<[<]")
+
+                dst.write("[-]+[>]<[-")
+
+                if const_plane_idx != -1:
+                    dst.write("<" * mem_size * 2 + "[-]" + ">" * mem_size * 2)
+
+                dst.write("<]")
+
+                if const_plane_idx != -1:
+                    dst.write("<" * mem_size * 2 + "[-]" + ">" * mem_size * 2)
+
                 dst.write("<" * mem_size * rewind_plane_idx)
 
             # clean plane for @
-            if const_plane_idx != -1:
+            elif const_plane_idx != -1:
                 dst.write(">" * mem_size * const_plane_idx)
                 dst.write("[-]>" * mem_size)
                 dst.write("<" * mem_size)
                 dst.write("<" * mem_size * const_plane_idx)
 
         return used_memory
+
+    @classmethod
+    def check(self, src: str) -> bool:
+        """checks that can this compiler compile given input or not?"""
+
+        if not Hardfuck.has_loop_(src, 0):
+            return True
+
+        i = src.find("[")
+
+        while i < len(src) - 1:
+            if Hardfuck.has_loop_(src, i + 1):
+                sys.stderr.write("error: nested loop is not implemented\n")
+
+                return False
+
+            j = src.find("]", i + 1)
+
+            if j + 1 == len(src) or not Hardfuck.has_loop_(src, j + 1):
+                return True
+
+            i = src.find("[", j + 1)
+
+
+        if src[i + 1] == "]":
+            return True
+        else:
+            sys.stderr.write("error: right bracket required\n")
+
+            return False
+
+    @classmethod
+    def has_loop_(self, src: str, idx: int) -> bool:
+        i = src.find("[", idx)
+        j = src.find("]", idx)
+
+        return i != -1 and (j == -1 or i < j)
+
 
     def __init__(self, src: io.TextIOWrapper = None, dst: io.TextIOWrapper = None, mem_size: int = 0x100, clean = True, short = True) -> None:
         self.src = src
@@ -164,7 +212,7 @@ if __name__ == "__main__":
             sys.stderr.write(f"  -short  generates short code\n")
             sys.exit(0)
 
-    af = Hardfuck(sys.stdin, sys.stdout, width, clean, short)
+    hf = Hardfuck(sys.stdin, sys.stdout, width, clean, short)
 
-    af.compile_file()
+    hf.compile_file()
 

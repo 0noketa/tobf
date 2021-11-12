@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import cast, Union, Tuple, List, Dict, Set
 import sys
+import os
 import io
 import re
 from bfa import Bfa
@@ -1364,7 +1365,19 @@ def parse(src):
 def is_cpp(tkns):
     return len(tkns) >= 1 and tkns[0].startswith("#")
 
-def load_cpped(filename: str, defined_names: Dict[str, str]={}, shared_vars=[]) -> List[str]:
+def find_dir(name: str, dirs: List[str], current_file: str = None) -> str:
+    if current_file != None and (os.sep in current_file):
+        dirs = dirs + [os.path.dirname(current_file)]
+
+    for dir in reversed(dirs):
+        name2 = os.path.join(dir, name)
+
+        if os.path.isfile(name2):
+            return dir
+
+    raise Exception(f"failed to open {name}")
+
+def load_cpped(filename: str, defined_names: Dict[str, str]={}, shared_vars=[], include_dirs=[]) -> List[str]:
     """returns preprocessed source"""
 
     cpp_ptn = re.compile("""\s*#\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*(.*|)""")
@@ -1469,8 +1482,9 @@ def load_cpped(filename: str, defined_names: Dict[str, str]={}, shared_vars=[]) 
             global_file, local_file = m2.groups()
 
             if global_file != None:
-
-                sub = load_cpped(global_file, defined_names, shared_vars)
+                dir = find_dir(global_file, include_dirs, filename)
+                global_file2 = os.path.join(dir, global_file)
+                sub = load_cpped(global_file2, defined_names, shared_vars, include_dirs)
                 src = src[:i] + sub + src[i:]
 
                 i = i + len(sub)
@@ -1478,7 +1492,9 @@ def load_cpped(filename: str, defined_names: Dict[str, str]={}, shared_vars=[]) 
                 continue
 
             if local_file != None:
-                sub = load_cpped(local_file, defined_names, shared_vars)
+                dir = find_dir(local_file, include_dirs, filename)
+                local_file2 = os.path.join(dir, local_file)
+                sub = load_cpped(local_file2, defined_names, shared_vars, include_dirs)
                 src = src[:i] + sub + src[i:]
 
                 i = i + len(sub)
@@ -1524,20 +1540,27 @@ def load_cpped(filename: str, defined_names: Dict[str, str]={}, shared_vars=[]) 
 
 
 class C2bf:
-    def __init__(self, file_name: str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE) -> None:
+    def __init__(self,
+            file_name: str,
+            defined_macros: Dict[str, str] = {},
+            shared_vars: List[str] = [],
+            include_dirs: List[str] = [],
+            stack_size=DEFAULT_STACK_SIZE
+            ) -> None:
         self.src = ""
         self.stack_size = stack_size
         self.shared_vars = shared_vars
+        self.include_dirs = include_dirs
 
-        self.src = C2bf.preprocess_file(file_name, defined_macros, self.shared_vars)
+        self.src = C2bf.preprocess_file(file_name, defined_macros, self.shared_vars, self.include_dirs)
 
     @classmethod
-    def preprocess_file(self, file_name, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = {}) -> str:
+    def preprocess_file(self, file_name, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = {}, include_dirs: List[str] = []) -> str:
         defined_macros.update({
             "__C2BF__": ""
         })
 
-        src0 = load_cpped(file_name, defined_names=defined_macros, shared_vars=shared_vars)
+        src0 = load_cpped(file_name, defined_names=defined_macros, shared_vars=shared_vars, include_dirs=include_dirs)
 
         return "\n".join(src0)
 
@@ -1572,14 +1595,36 @@ class C2bf:
         return [dst_out.getvalue(), memory_size]
 
     @classmethod
-    def compile_file_to_bfa(self, file_name:str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE, startup="{main()}", optimization_level=0) -> Bfa:
-        c = C2bf(file_name, defined_macros=defined_macros, shared_vars=shared_vars, stack_size=stack_size)
+    def compile_file_to_bfa(self,
+            file_name:str,
+            defined_macros: Dict[str, str] = {},
+            shared_vars: List[str] = [],
+            include_dirs: List[str] = [],
+            stack_size=DEFAULT_STACK_SIZE,
+            startup="{main()}",
+            optimization_level=0) -> Bfa:
+        c = C2bf(file_name,
+                defined_macros=defined_macros,
+                shared_vars=shared_vars,
+                include_dirs=include_dirs,
+                stack_size=stack_size)
 
         return c.compile_to_bfa(startup, optimization_level=optimization_level)
 
     @classmethod
-    def compile_file_to_bf(self, file_name:str, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = [], stack_size=DEFAULT_STACK_SIZE, startup="{main()}", optimization_level=0) -> Tuple[str, int]:
-        c = C2bf(file_name, defined_macros=defined_macros, shared_vars=shared_vars, stack_size=stack_size)
+    def compile_file_to_bf(self,
+            file_name:str,
+            defined_macros: Dict[str, str] = {},
+            shared_vars: List[str] = [],
+            include_dirs: List[str] = [],
+            stack_size=DEFAULT_STACK_SIZE, 
+            startup="{main()}", 
+            optimization_level=0) -> Tuple[str, int]:
+        c = C2bf(file_name,
+                defined_macros=defined_macros, 
+                shared_vars=shared_vars, 
+                include_dirs=include_dirs,
+                stack_size=stack_size)
 
         return c.compile_to_bf(startup, optimization_level=optimization_level)
 
@@ -1600,7 +1645,8 @@ def main(argv):
 
             continue
 
-        opt_name = argv[i][1:]
+        opt_name0 = argv[i][1:]
+        opt_name = opt_name0
         opt_arg = ""
 
         for sep in [":", "="]:
@@ -1622,8 +1668,8 @@ def main(argv):
 
             continue
 
-        if opt_name.startswith("I"):
-            include_dirs.append(opt_name[1:])
+        if opt_name0.startswith("I"):
+            include_dirs.append(opt_name0[1:])
 
             continue
 
@@ -1646,7 +1692,7 @@ def main(argv):
             continue
 
     if len(file_names) == 0 or not file_names[0].endswith(".c"):
-        print(f"python {argv[0]} [options] src")
+        print(f"python {argv[0]} src [options]")
         print("  -Onum           optimization level")
         print("  -Dname[=value]  define macro")
         print("  -Idir           add include directory")
@@ -1660,13 +1706,16 @@ def main(argv):
     # try:
     if True:
         if preprocess_only:
-            c2 = C2bf.preprocess_file(file_names[0], defined_macros=defined_macros)
+            c2 = C2bf.preprocess_file(file_names[0],
+                    defined_macros=defined_macros,
+                    include_dirs=include_dirs)
 
             with io.open(file_names[0] + ".i", "w") as f:
                 f.write(c2)
         elif generates_bfa:
             bfa = C2bf.compile_file_to_bfa(file_names[0],
                 defined_macros=defined_macros,
+                include_dirs=include_dirs,
                 stack_size=stack_size,
                 optimization_level=optimization_level)
 
@@ -1674,9 +1723,10 @@ def main(argv):
                 f.write(bfa.src)
         else:
             bf, memory_size = C2bf.compile_file_to_bf(file_names[0],
-                defined_macros=defined_macros,
-                stack_size=stack_size,
-                optimization_level=optimization_level)
+                    defined_macros=defined_macros,
+                    include_dirs=include_dirs,
+                    stack_size=stack_size,
+                    optimization_level=optimization_level)
 
             sys.stderr.write(f"this program uses {memory_size} cells.\n")
 
