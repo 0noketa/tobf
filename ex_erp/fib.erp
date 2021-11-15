@@ -4,19 +4,19 @@ import erp_std
 : fib
 var i var j
 var n var m
-	=m
-	0 =n
-	1 =i
-	0 =j
-	{ n m < } {
-		i dup j +
-		=i
-		=j
+    =m
+    0 =n
+    1 =i
+    0 =j
+    { n m < } {
+        i
+        dup j + =i
+        =j
 
-		n inc =n
-	} while
-	i
-	;
+        n inc =n
+    } while
+    i
+    ;
 
 var x
 var y

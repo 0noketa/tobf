@@ -678,12 +678,12 @@ def compile(src: List[str]):
             dst.append(f"endwhile x")
             append_push("z")
         elif tkn.startswith("=") and (tkn[1:] in vars):
-            append_pop(f"x")
  
             if tkn[1:] in pointable_vars:
+                append_pop(f"x")
                 dst.append(f"{mem_name}:@w_move x {pointable_vars.index(tkn[1:])}")
             else:
-                dst.append(f"move x _{tkn[1:]}")
+                append_pop(f"_{tkn[1:]}")
         elif tkn.startswith("'") and tkn.endswith("'") and len(tkn) == 3:
             append_push_imm(ord(tkn[1]))
         elif tkn.startswith("'"):
@@ -826,6 +826,78 @@ def optimize(src: List[str], repeat: int = None):
 
         i += 1
 
+def optimize_tobf(code: List[str]):
+    def parse_push(s: str):
+        if s.find(" ") == -1:
+            qo0 = s
+            p0 = ""
+        else:
+            qo0, p0 = s.split(" ", 1)
+
+        qo0_s = qo0.split(":")
+
+        if len(qo0_s) > 1:
+            return ":".join(qo0_s[:-1]), qo0_s[-1], p0
+        else:
+            return "", qo0_s[0], p0
+
+    while True:
+        optimized = False
+
+        for i in range(len(code) - 1):
+            m0, o0, p0 = parse_push(code[i])
+            m1, o1, p1 = parse_push(code[i + 1])
+
+            if m0 == m1 and o0 == "@push" and o1 == "@pop":
+                code[i] = f"# push and pop"
+                code[i + 1] = f"set {p0} {p1}" if p0.isdigit() else f"copy {p0} {p1}"
+
+                optimized = True
+
+                break
+
+        for i in range(len(code) - 2):
+            m0, o0, p0 = parse_push(code[i])
+            m1, o1, p1 = parse_push(code[i + 1])
+            m2, o2, p2 = parse_push(code[i + 2])
+
+            if len(set([m0, m1, m2])) == 1 and o0 == "@push" and o2 == "@pop" and p0 == p2 and o1 in ["@inc", "@dec"]:
+                code[i] = f"# push and {o1} and pop"
+                code[i + 1] = f"{o1[1:]} {p0}"
+
+                code.pop(i + 2)
+
+                optimized = True
+
+                break
+
+        for i in range(len(code) - 3):
+            m0, o0, p0 = parse_push(code[i])
+            m1, o1, p1 = parse_push(code[i + 1])
+            m2, o2, p2 = parse_push(code[i + 2])
+            m3, o3, p3 = parse_push(code[i + 3])
+
+            if (len(set([m0, m1, m2, m3])) == 1
+                    and o0 == "@push" and o1 == "@push"
+                    and o3 == "@pop"
+                    and p0 == p3
+                    and o2 in ["@add", "@sub"]):
+
+                code[i] = f"# simple {o2}"
+                o = "copyadd" if o2 == "@add" else "copysub"
+                code[i + 1] = f"{o} {p1} {p0}"
+
+                code.pop(i + 2)
+                code.pop(i + 2)
+
+                optimized = True
+
+                break
+
+        if not optimized:
+            break
+
+
 if __name__ == "__main__":
     inc_dir = []
 
@@ -841,6 +913,8 @@ if __name__ == "__main__":
 
     src = load(sys.stdin, [], inc_dir)
     code = compile(src)
+
+    optimize_tobf(code)
 
     for i in code:
         print(i)

@@ -1344,13 +1344,15 @@ class Tobf:
                 mem_size = ArrowFuck(src, dst, mem_size[:2]).compile()
                 bf = dst.getvalue()
 
-            if name == "include_4dchess":
+            elif name == "include_4dchess":
                 src = io.StringIO(bf)
                 dst = io.StringIO()
 
                 mem_size = FDChess(src, dst, mem_size[:4]).compile()
                 bf = dst.getvalue()
 
+            else:
+                mem_size = mem_size[0]
 
             if len(args[1:]) > mem_size:
                 raise Exception("variables [include_bf] passed can not be stored to bf memory area.")

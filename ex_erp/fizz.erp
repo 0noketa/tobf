@@ -1,0 +1,39 @@
+import erp_std
+
+var c_fizz
+var c_buzz
+
+: fizz
+    0 =c_fizz
+    'F' putc 'I' putc
+: .zz
+    'Z' dup putc putc
+    1
+    ;
+: buzz
+    0 =c_buzz
+    'B' putc 'U' putc
+    'fizz.zz jmp
+
+var n
+var i
+
+: main
+    1 =c_fizz
+    1 =c_buzz
+
+    , =n
+    1 =i
+    { i n < } {
+        c_fizz 3 =  'fizz and
+        c_buzz 5 =  'buzz and
+        + not
+        { i putInt } then
+        ln
+
+        c_fizz inc =c_fizz
+        c_buzz inc =c_buzz
+        i inc =i
+    } while
+    ;
+

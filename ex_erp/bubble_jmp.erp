@@ -1,0 +1,79 @@
+import erp_std
+
+ary a 224
+var size
+var swapped
+var p
+var x
+var y
+var i
+
+: read_all
+    'a =p
+    size =i
+: .L1
+    getInt p !
+
+    p inc =p
+    i dec =i
+    i '.L1 'noop if jmp
+
+: write_all
+    'a =p
+    size =i
+: .L1
+    p @ putInt ln
+
+    p inc =p
+    i dec =i
+    i '.L1 'noop if jmp
+
+: sort
+    0 =swapped
+    'a =p
+    size dec =i
+: .L1
+    p @ =x
+    p inc @ =y
+
+    x y > {
+        y p !
+        x p inc !
+
+        1 =swapped
+
+        '.L2 jmp
+    } '.L2 if jmp
+: .L2
+    p inc =p
+    i dec =i
+    i '.L1 {
+        swapped 'sort 'noop if jmp
+    } if jmp
+
+: sort2
+    'a =p
+    size dec =i
+: .L1
+    p @ =x
+    p inc @ =y
+
+    x y > {
+        y p !
+        x p inc !
+
+        'sort2 jmp
+    } {
+        p inc =p
+        i dec =i
+        i '.L1 'noop if jmp
+    } if jmp
+
+
+: main
+    getInt 31 min =size
+
+    read_all
+    sort
+    write_all
+    ;

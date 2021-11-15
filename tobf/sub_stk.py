@@ -70,7 +70,7 @@
 #   and digit-prefixed tuple-juggling operators such as
 #     2dup (a b -- a b  a b)
 #     3swap (a b c  d e f -- d e f  a b c)
-#     4rot (a b c d  e f g h  i j k l -- i j k l  a b c d  e f g h)
+#     4rot (a b c d  e f g h  i j k l -- e f g h  i j k l  a b c d)
 #     5over (a b c d e  f g h i j -- a b c d e  f g h i j  a b c d e)
 #   currently Ndrop is not implemented
 # @juggle imm_src_range ...imm_indices
@@ -350,7 +350,7 @@ class Subsystem_Stk(SubsystemBase):
             # 1 2  3*4  5 6  x y
             + ((("[" + ("<<" * c) + "+" + (">>" * c) + "-]" + (">>" * c)) * n) + ("<<" * (c * n - 1))) * c
             # 1 2  3*4  5 6  x y
-            + ">>" * c)
+            )
 
         if last:
             self.put_juggling_end()
