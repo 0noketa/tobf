@@ -1,0 +1,22 @@
+import erp_base
+
+( limitation: func can not take any argument. can not return any value )
+( usage:
+    cond { } then
+    cond { } else { } then
+)
+: else ( func -- )
+	=then_body ;
+: then ( cond func -- )
+var then_body
+	then_body {
+		then_body swap
+	} {
+		'noop
+	} if call
+
+	0 =then_body
+
+	if jmp
+
+

@@ -51,6 +51,12 @@ from __future__ import annotations
 #   add poped 2 values. and push it. 
 # if ( cond t f -- t|f )
 #   pop 3 values. if first is not zero, push second. or else push third. 
+# import module_name
+#   include source file (just once)
+# include module_name
+#   include source file
+# ( ... )
+#   comment
 from typing import Union, Tuple, List, Set
 import sys
 import os
@@ -434,11 +440,25 @@ def load(file: io.TextIOWrapper, loaded: List[str] = [], inc_dir: List[str] = []
 
     src = list(filter(len, s.split()))
 
+    # comment
+    i = 0
+    while "(" in src:
+        i = src.index("(")
+        if ")" in src[i + 1:]:
+            j = src.index(")", i + 1)
+        else:
+            j = len(src)
+
+        src = src[:i] + src[j + 1:]
+
     i = 0
     while i < len(src):
-        if src[i] == "import":
+        if src[i] in ["import", "include"]:
             j = i + 1
-            if not (src[j] in loaded):
+            if not (src[j] in loaded) or src[i] == "include":
+                if src[i] == "import":
+                    loaded.append(src[j])
+
                 d = ""
                 f = src[i + 1] + ".erp"
                 for d2 in reversed(inc_dir):
@@ -454,7 +474,7 @@ def load(file: io.TextIOWrapper, loaded: List[str] = [], inc_dir: List[str] = []
                     raise Exception(f"can not open {f}")
 
                 with io.open(f) as f:
-                    src2 = load(f, loaded)
+                    src2 = load(f, loaded, inc_dir)
             else:
                 src2 = []
 
@@ -464,12 +484,7 @@ def load(file: io.TextIOWrapper, loaded: List[str] = [], inc_dir: List[str] = []
 
     return src
 
-def compile(src: List[str]):
-    last_label = 255
-    rstack_size = 16
-    dstack_size = 32
-    anon_func_prefix = "erp_func_"
-
+def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_func_prefix="erp_func_"):
     optimize(src)
 
     has_main = main_exists(src)
@@ -695,6 +710,10 @@ def compile(src: List[str]):
                 v = word_label(src, tkn[1:], i)
 
                 if i + 1 < len(src) and src[i + 1] == "jmp":
+                    if v == -1:
+                        sys.stderr.write(f"error:n")
+                        sys.stderr.write(f"tkn{i}: {tkn}\n")
+                        sys.stderr.write(f"next:{label(src, i + 1)}:n")
                     dst.append(f"erp:@goto set {v}")
                     dst.append(f"erp:@at {label(src, i + 1)}")
                     i += 1
@@ -813,11 +832,11 @@ def optimize(src: List[str], repeat: int = None):
 
                 continue
         
-        if is_call(src, src[i], i) and i + 1 < len(src) and src[i + 1] == ";":
+        if src[i] == "call" and i + 1 < len(src) and src[i + 1] == ";":
+            src[i] = "jmp"
+        elif is_call(src, src[i], i) and i + 1 < len(src) and src[i + 1] == ";":
             src[i] = "'" + src[i]
             src[i + 1] = "jmp"
-        elif src[i] == "call" and i + 1 < len(src) and src[i + 1] == ";":
-            src[i] = "jmp"
 
         if src[i] in ["jmp", ";"] and i + 1 < len(src) and src[i + 1] == ";":
             j = i + 1
@@ -840,6 +859,13 @@ def optimize_tobf(code: List[str]):
             return ":".join(qo0_s[:-1]), qo0_s[-1], p0
         else:
             return "", qo0_s[0], p0
+    def isvar(x):
+        builtins = ["swap", "dup", "rot", "over", "putc", "getc", "input", "print"]
+    
+        return x.isidentifier() and (x not in builtins)
+
+    def isval(x):
+        return x.isdigit() or isvar(x)
 
     while True:
         optimized = False
@@ -848,7 +874,31 @@ def optimize_tobf(code: List[str]):
             m0, o0, p0 = parse_push(code[i])
             m1, o1, p1 = parse_push(code[i + 1])
 
-            if m0 == m1 and o0 == "@push" and o1 == "@pop":
+            if m0 == m1 and o0 == "@push" and o1 == "@pop" and p0 == "input" and isvar(p1):
+                code[i] = f"# input"
+                code[i + 1] = f"input {p1}"
+
+                optimized = True
+
+                break
+
+        for i in range(len(code) - 1):
+            m0, o0, p0 = parse_push(code[i])
+            m1, o1, p1 = parse_push(code[i + 1])
+
+            if m0 == m1 and o0 == "@push" and o1 == "@pop" and isvar(p0) and p1 == "print":
+                code[i] = f"# print"
+                code[i + 1] = f"print {p0}"
+
+                optimized = True
+
+                break
+
+        for i in range(len(code) - 1):
+            m0, o0, p0 = parse_push(code[i])
+            m1, o1, p1 = parse_push(code[i + 1])
+
+            if m0 == m1 and o0 == "@push" and o1 == "@pop" and isval(p0) and isvar(p1):
                 code[i] = f"# push and pop"
                 code[i + 1] = f"set {p0} {p1}" if p0.isdigit() else f"copy {p0} {p1}"
 
@@ -861,11 +911,49 @@ def optimize_tobf(code: List[str]):
             m1, o1, p1 = parse_push(code[i + 1])
             m2, o2, p2 = parse_push(code[i + 2])
 
-            if len(set([m0, m1, m2])) == 1 and o0 == "@push" and o2 == "@pop" and p0 == p2 and o1 in ["@inc", "@dec"]:
+            if (len(set([m0, m1, m2])) == 1
+                    and o0 == "@push" and o2 == "@pop"
+                    and isvar(p0) and p0 == p2
+                    and o1 in ["@inc", "@dec"]):
                 code[i] = f"# push and {o1} and pop"
                 code[i + 1] = f"{o1[1:]} {p0}"
 
                 code.pop(i + 2)
+
+                optimized = True
+
+                break
+
+        # flatten
+        # dstack:@push _x
+        # dstack:@calc _y +
+        # dstack:@pop _x
+        # to
+        # dstack:@push _x
+        # dstack:@push _y
+        # dstack:@add
+        # dstack:@pop _x
+        for i in range(len(code) - 2):
+            m0, o0, p0 = parse_push(code[i])
+            m1, o1, p1 = parse_push(code[i + 1])
+            m2, o2, p2 = parse_push(code[i + 2])
+
+            ps1 = p1.split(" ")
+            if len(ps1) == 2:
+                p1a, p1b = ps1
+
+            if (len(set([m0, m1, m2])) == 1
+                    and o0 == "@push"
+                    and o1 == "@calc"
+                    and o2 == "@pop"
+                    and isvar(p0) and p0 == p2
+                    and len(ps1) == 2
+                    and (isval(p1a)
+                        or p1a[0] == "-" and isval(p1a[1:]))
+                    and p1b in ["+", "-"]):
+                code[i + 1] = f"{m1}:@push {p1a}"
+                o = "add" if p1b == "+" else "sub"
+                code.insert(i + 2, f"{m1}:@{o}")
 
                 optimized = True
 
@@ -880,12 +968,16 @@ def optimize_tobf(code: List[str]):
             if (len(set([m0, m1, m2, m3])) == 1
                     and o0 == "@push" and o1 == "@push"
                     and o3 == "@pop"
-                    and p0 == p3
+                    and isvar(p0) and p0 == p3
+                    and isval(p1)
                     and o2 in ["@add", "@sub"]):
 
                 code[i] = f"# simple {o2}"
-                o = "copyadd" if o2 == "@add" else "copysub"
-                code[i + 1] = f"{o} {p1} {p0}"
+                opfx = ("" if p1.isdigit()
+                        else "move" if p1.startswith("-")
+                        else "copy")
+                osfx = "add" if o2 == "@add" else "sub"
+                code[i + 1] = f"{opfx}{osfx} {p1} {p0}"
 
                 code.pop(i + 2)
                 code.pop(i + 2)
@@ -900,19 +992,39 @@ def optimize_tobf(code: List[str]):
 
 if __name__ == "__main__":
     inc_dir = []
+    dstack_size = 64
+    rstack_size = 8
+    last_label = 255
 
     for arg in sys.argv[1:]:
         if arg.startswith("-I"):
             inc_dir.append(arg[2:])
 
+        if arg.startswith("-ds"):
+            dstack_size = int(arg[3:])
+
+        if arg.startswith("-rs"):
+            rstack_size = int(arg[3:])
+
+        if arg == "-bf8":
+            last_label = 255
+        if arg == "-bf16":
+            last_label = 65535
+
         if arg in ["-help", "-?", "-h"]:
             print(f"python {sys.argv[0]} [options] < src > dst")
             print(f"options:")
             print(f"  -Idir  add include/import search directory")
+            print(f"  -dsN   select size of data stack ({dstack_size})")
+            print(f"  -rsN   select size of call stack ({rstack_size})")
+            # print(f"  -bf16  target is 16bit brainfuck")
             sys.exit(0)
 
     src = load(sys.stdin, [], inc_dir)
-    code = compile(src)
+    code = compile(src,
+            dstack_size=dstack_size,
+            rstack_size=rstack_size,
+            last_label=last_label)
 
     optimize_tobf(code)
 

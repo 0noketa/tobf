@@ -1,4 +1,6 @@
 import sys
+import const_replacer
+
 
 def check_balanced_loop(s: str, ptr: int = 0, from_: int = 0, to_: int = -1, mask: list = [], max_mem_size: int = -1) -> bool:
     """s[from_:to_] as loop excludes []\n
@@ -188,24 +190,37 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] in ["-?", "/?", "-help", "--help"]:
-        print(f"python {sys.argv[0]} [-main] [-memory_sizeN] [-O0] < input.bf > output.bf")
+        print(f"python {sys.argv[0]} [-main] [-memN] [-O0] < input.bf > output.bf")
         print(f"  -main  ignores initial data")
 
         sys.exit(0)
 
     is_main = False
     memory_size = -1
-    optimization_level = 2
+    optimization_level = 1
 
     for arg in sys.argv[1:]:
         if arg == "-main":
             is_main = True
-        elif arg.startswith("-memory_size"):
-            memory_size = int(arg[12:])
+        elif arg.startswith("-mem"):
+            memory_size = int(arg[4:])
         elif arg.startswith("-O"):
             optimization_level = int(arg[2:])
 
-    src = optimize("".join(map(optimize, sys.stdin.readlines())), is_partial=(optimization_level <= 1), is_main=is_main, max_mem_size=memory_size)
+    block_size = 0x10000
+    src = ""
+
+    while True:
+        data = sys.stdin.read(block_size)
+
+        if len(data) == 0:
+            break
+
+        src += "".join([i for i in data if i in "<>+-,.[]"])
+
+    for _ in range(optimization_level):
+        src = const_replacer.optimize(src, is_initial=is_main)
+        src = optimize(src, is_partial=False, is_main=(is_main and optimization_level > 1), max_mem_size=memory_size)
 
     w = 80
     for i in range(0, len(src), w):

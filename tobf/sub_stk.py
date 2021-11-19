@@ -365,7 +365,7 @@ class Subsystem_Stk(SubsystemBase):
         else:
             args = [str(c * 2)] + [str(i) for i in range(c * 2)] + [str(i) for i in range(c)]
 
-        self.put_juggling_juggle(args)
+        self.put_juggling_juggle(args, first=first, last=last)
 
     def put_juggling_juggle(self, args: List[str], first=False, last=False):
         """starts and ends at first unused value."""

@@ -1,0 +1,24 @@
+: noop ;
+
+( usage:
+    a 0 <>
+    { a 1 <> } and
+    { b 2 = { c 2 = } or } and
+    not
+    { } { } if call
+)
+: and ( bool (--bool) -- bool )  { 0 } if jmp
+: or ( bool (--bool) -- bool )  { 1 } swap if jmp
+: not ( bool -- bool )  0 1 if ;
+: toBool ( int -- bool )  1 0 if ;
+
+: min ( int int -- int )
+    2dup
+: .L1
+    < {
+        drop
+    } {
+        swap drop
+    } if jmp
+: max ( int int -- int )
+    2dup swap 'min.L1 jmp

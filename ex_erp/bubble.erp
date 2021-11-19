@@ -1,4 +1,4 @@
-import erp_std
+import erp_base
 
 ary a 224
 var size

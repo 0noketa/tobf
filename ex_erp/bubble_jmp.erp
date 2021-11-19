@@ -1,4 +1,4 @@
-import erp_std
+import erp_base
 
 ary a 224
 var size
@@ -51,23 +51,6 @@ var i
         swapped 'sort 'noop if jmp
     } if jmp
 
-: sort2
-    'a =p
-    size dec =i
-: .L1
-    p @ =x
-    p inc @ =y
-
-    x y > {
-        y p !
-        x p inc !
-
-        'sort2 jmp
-    } {
-        p inc =p
-        i dec =i
-        i '.L1 'noop if jmp
-    } if jmp
 
 
 : main

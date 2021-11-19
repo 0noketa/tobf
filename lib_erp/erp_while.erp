@@ -1,0 +1,8 @@
+( limitation: func can not take any argument. can not return any value )
+: while ( cond_func func -- )
+	swap dup call {
+		swap dup call
+		'while jmp
+	} {
+		drop drop
+	} if jmp

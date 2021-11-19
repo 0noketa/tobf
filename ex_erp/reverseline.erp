@@ -1,0 +1,35 @@
+( erp2bf ex_erp\reverseline.erp -rs2 -ds128 )
+( reverses every line )
+import erp_base
+
+var len
+var eof
+
+: main
+
+: .get
+    getc
+    dup 10 <>
+    { over 255 <> } and
+    {
+        len inc =len
+        '.get jmp
+    } {
+        255 <> '.get_exit '.exit if jmp
+    } if jmp
+: .get_exit
+
+: .put
+    '.put_branch jmp
+: .put_continue
+    putc
+    len dec =len
+: .put_branch
+    len 0 <> '.put_continue '.put_exit if jmp
+: .put_exit
+    ln
+    '.get jmp
+
+: .exit
+    ;
+
