@@ -59,7 +59,7 @@ class ReplacementCode:
             if i + j < len(self.code) and code[i + j].op in ops:
                 return i + j
 
-            if i - j > 0 and code[i - j].op in ops:
+            if i - j >= 0 and code[i - j].op in ops:
                 return i - j
 
         return -1
@@ -206,17 +206,17 @@ class ConstReplacer:
 
             done = False
 
-            if i.arg > 8:
+            if abs(i.arg) > 8:
                 asgn_idx = src.find_nearest_assignment(
                         idx,
                         is_reversed=is_reversed,
-                        include_initial=src.is_initial)
+                        include_initial=True)
 
                 if (asgn_idx in remained) or (asgn_idx in zeroed):
                     d = abs(asgn_idx - idx)
-                    x, y, z = calc_small_triple(i.arg)
+                    x, y, z = calc_small_triple(abs(i.arg))
 
-                    if d * 4 + 3 + x + y + z < i.arg:
+                    if d * 4 + 3 + x + y + z < abs(i.arg):
                         mov = left if asgn_idx < idx else right
                         ret = right if asgn_idx < idx else left
                         o = "+" if i.arg > 0 else "-"
@@ -229,10 +229,13 @@ class ConstReplacer:
                         s0 += "+" * x + "[" + ret * d + o * y + mov * d + "-]"
 
                         if asgn_idx in remained:
-                            s0 += "+" * code[asgn_idx].arg
+                            o2 = "-" if code[asgn_idx].arg < 0 else "+"
+                            s0 += o2 * abs(code[asgn_idx].arg)
 
                             remained.remove(asgn_idx)
-                            zeroed.append(asgn_idx)
+
+                            if code[asgn_idx].arg == 0:
+                                zeroed.append(asgn_idx)
 
                         s0 += ret * d
 
@@ -280,6 +283,12 @@ def optimize(src: str, req=8, is_initial=False) -> str:
 
         is_init = is_initial and j == 0
         code = ConstReplacer.create_instructions(s, is_initial=is_init)
+
+        if j > 0 and src[j - 1] == "]" and code.code[code.from_].op == "?":
+            code.code[code.from_] = Instruction("!", 0)
+
+        if is_init and  code.find_nearest_assignment(code.to_, include_initial=True) == -1:
+            code.code.append(Instruction("!", 0))
 
         r += ConstReplacer.compile_instructions(code)
 
