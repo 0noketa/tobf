@@ -1,5 +1,8 @@
 from __future__ import annotations
 # C(simple subset) to Brainfuck compiler
+# builtin functions:
+#   puts()  // arg0 is string constant.
+#   fputs()  // arg0 is string constant. arg1 is any number (ignored)
 
 from typing import cast, Union, Tuple, List, Dict, Set
 import sys
@@ -21,6 +24,8 @@ class Function:
             self.expr.rename_vars_to_unique(self.params)
             self.params = [f"__c2bf_arg_{param}" for param in self.params]
             self.expr.move_branches_to_last(for_tail_jump=True)
+
+            sys.stderr.write(str(self.expr))
 
     def is_pass(self) -> bool:
         """True if function returns arg0 and does nothing."""
@@ -66,15 +71,15 @@ def skip_escaped_char(s: str, i: int = 0) -> Tuple[int, int]:
         return (ord(s[i]), i + 1)
     else:
         if s[i + 1] == "x":
-            return (int(s[i + 2:i + 4], 16), i + 4)
+            return (int(s[i + 2:i + 4], 16), i + 5)
         elif s[i + 1] == "n":
-            return (10, i + 1)
+            return (10, i + 2)
         elif s[i + 1] == "r":
-            return (13, i + 1)
+            return (13, i + 2)
         elif s[i + 1] == "t":
-            return (9, i + 1)
+            return (9, i + 2)
         else:
-            return (ord(s[i + 1]), i + 1)
+            return (ord(s[i + 1]), i + 2)
 
 class Expr:
     def __init__(self, opr="<ERROR>", args: List[Expr] = [], value: str = None):
@@ -85,32 +90,13 @@ class Expr:
 
     def __str__(self, dpt=0) -> str:
         if self.opr == "<NIL>" or (self.opr in ["{", ";"] and len(self.args) == 0):
-            return ""
+            return "null"
         r = ""
-        if self.opr in ["+", "-", "*", "/", "%", "=", "+=", "-=", "*=", "/=", "%=", "<", ">", "<=", ">=", "&&", "||", "!", "~"]:
-            r += "(" + f" {self.opr} ".join([arg.__str__(dpt) for arg in self.args]) + ")"
-        elif self.opr == ";":
-            r += "".join(["  " * dpt + arg.__str__(dpt) + ";\n" for arg in self.args])
-        elif self.opr == "{":
-            r += "{" + "".join(["  " * dpt + arg.__str__(dpt) + "\n" for arg in self.args]) + "}"
-        elif self.opr == "[":
-            r += "[" + ",".join([arg.__str__(dpt) for arg in self.args]) + "]"
-        elif self.opr == ",":
-            r += "(" + ",".join([arg.__str__(dpt) for arg in self.args]) + ")"
-        elif self.opr == ":":
-            r += self.value + ":" + self.args[0].__str__(dpt)
-        elif self.opr == "?":
-            r += "(" + self.args[0].__str__(dpt) + " ? " + self.args[1].__str__(dpt) + " : " + self.args[1].__str__(dpt) + ")"
-        elif self.opr == "if":
-            r += "if (" + self.args[0].__str__(dpt) + ")\n" + self.args[1].__str__(dpt + 1)
-            if len(self.args) > 2:
-                r += "else\n" + self.args[2].__str__(dpt + 1)
-        elif self.opr == "while":
-            r += "while (" + self.args[0].__str__(dpt) + ") " + self.args[1].__str__(dpt)
-        elif self.opr == "call":
-            r += self.value + self.args[0].__str__(dpt)
+
+        if self.opr in ["<ID>", "<NUM>"]:
+            r += f'{{"{self.opr}": "{self.value}"}}'
         else:
-            r += f"{self.opr}:{self.value}"
+            r += f'{{"{self.opr}": [' + f",".join([arg.__str__(dpt) for arg in self.args]) + "]}"
         
         return r
 
@@ -1557,7 +1543,7 @@ class C2bf:
     @classmethod
     def preprocess_file(self, file_name, defined_macros: Dict[str, str] = {}, shared_vars: List[str] = {}, include_dirs: List[str] = []) -> str:
         defined_macros.update({
-            "__C2BF__": ""
+            "__TOBF_C2BF__": ""
         })
 
         src0 = load_cpped(file_name, defined_names=defined_macros, shared_vars=shared_vars, include_dirs=include_dirs)
@@ -1685,7 +1671,7 @@ def main(argv):
 
         if opt_name == "stack_size":
             if len(argv) > 2:
-                stack_size = max(1, abs(int(opt_arg)) & 0xFFFF)
+                stack_size = max(3, abs(int(opt_arg)) & 0xFFFF)
             else:
                 stack_size = DEFAULT_STACK_SIZE
 

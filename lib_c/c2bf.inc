@@ -1,7 +1,7 @@
 #ifndef c2bf__included
 #define c2bf__included
 
-#ifndef __C2BF__
+#ifndef __TOBF_C2BF__
     #include <stdio.h>
 
     #define __c2bf_debug() fputs("debug dump at here\n", stderr)
@@ -41,7 +41,7 @@ print_int(n) {
         n -= 1;
     }
 
-    #ifdef __C2BF__
+    #ifdef __TOBF_C2BF__
     __c2bf_moveadd('0', i, j, k);
     __c2bf_print(k, j, i);
     #else

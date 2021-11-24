@@ -1419,7 +1419,6 @@ class Tobf:
             c_func_name = args[2]
             c_func_args_and_result = args[3:]
             c_func_args = c_func_args_and_result[:-1]
-            c_base_ptr = self.addressof_nextsubsystem()
 
             shared_vars = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
 
@@ -1427,7 +1426,8 @@ class Tobf:
                 c = C2bf(c_file_name, shared_vars=shared_vars, stack_size=c_stack_size)
                 c_func_args2 = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
                 c_startup = f"""{{ __tobf_shared0 = {c_func_name}({",".join(c_func_args2)}); }}"""
-                bf, _ = c.compile_to_bf(c_startup)
+                bf, c_mem_size = c.compile_to_bf(c_startup)
+                c_base_ptr = self.addressof_free_area(c_mem_size)
             except Exception:
                 raise Exception(f"failed to open {c_file_name}")
 

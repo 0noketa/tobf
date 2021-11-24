@@ -1,4 +1,8 @@
-#ifdef __C2BF__
+#ifndef __TOBF_C2BF__
+#include <stdio.h>
+#endif
+
+#ifdef __TOBF_C2BF__
 #ifndef stdio__h__included
 #define stdio__h__included
 
