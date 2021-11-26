@@ -182,6 +182,7 @@ class IntermediateCompiler:
     def optimize(self):
         optimized = True
         while optimized:
+            # sys.stderr.write(f"code size: {len(self.src)}\n")
             optimized = False
 
             labels = self.get_used_labels()
@@ -207,6 +208,18 @@ class IntermediateCompiler:
 
                     continue
 
+                if op0 in ["jmp", "jz"] and arg0 == lbl and lbl0 not in labels:
+                    self.src.pop(i - 1)
+                    optimized = True
+
+                    continue
+
+                if op0 in ["jmp", "jz"] and op == "jmp" and arg0 == arg and lbl0 not in labels:
+                    self.src.pop(i - 1)
+                    optimized = True
+
+                    continue
+
                 if op0 in ["jmp", "exit"] and op == "jmp" and lbl in labels:
                     self.replace_destination_labels(lbl, arg)
                     self.src.pop(i)
@@ -225,15 +238,23 @@ class IntermediateCompiler:
                     if lbl0 not in labels:
                         self.src.pop(i - 1)
                         optimized = True
+
+                        continue
                     elif lbl not in labels:
                         self.src.pop(i)
                         optimized = True
 
-                    continue
+                        continue
+                    elif lbl0 in labels and lbl in labels:
+                        self.replace_destination_labels(lbl, lbl0)
+                        self.src.pop(i)
+                        optimized = True
+
+                        continue
 
                 if (op0 != op
-                        and (op0 in "+-" and op in "+-"
-                                or op0 in "<>" and op in "<>")
+                        and (set([op0, op]) == set(["+", "-"])
+                                or set([op0, op]) == set(["+", "-"]))
                         and lbl not in labels):
                     self.src[i - 1] = (lbl0, "", 0)
                     self.src.pop(i)
@@ -261,7 +282,23 @@ class IntermediateToC(IntermediateCompiler):
 #ifndef DATA_SIZE
 #define DATA_SIZE 0x1000
 #endif
+#ifdef USE_RING
+uint8_t data[DATA_SIZE];
+size_t i = 0;
+#define p (&data[i])
+#define ptr_inc(d) i = (i + d) % DATA_SIZE;
+#define ptr_dec(d) i = (i - d) % DATA_SIZE;
+#else
 uint8_t data[DATA_SIZE], *p = data;
+#ifdef UNSAFE_MODE
+#define ptr_inc(d) p += d;
+#define ptr_dec(d) p -= d;
+#else
+#define ptr_inc(d) p += d; if (p < data) return 1;
+#define ptr_dec(d) p -= d; if (p < data) return 1;
+#endif
+#endif
+
 int main(int argc, char *argv[]) {
 """.split("\n")
         labels = self.get_used_labels()
@@ -289,12 +326,12 @@ int main(int argc, char *argv[]) {
                 continue
             if op == ">":
                 j = self.skip_mergeable(i, labels) 
-                dst.append(f"p += {j - i};")
+                dst.append(f'ptr_inc({j - i})')
                 i = j
                 continue
             if op == "<":
                 j = self.skip_mergeable(i, labels) 
-                dst.append(f"p -= {j - i};")
+                dst.append(f'ptr_dec({j - i})')
                 i = j
                 continue
             if op == ",":
@@ -398,6 +435,164 @@ mov edx, bf_data
         return dst
 
 
+class IntermediateToCASL2(IntermediateCompiler):
+    def __init__(self, src: List[Tuple[int, str, int]]):
+        super().__init__(src)
+
+    def make_cas(self, lbl, op, args):
+        return f"{lbl:10}{op:18}{args}"
+    def compile(self) -> List[str]:
+        lib = """
+; result:GR0
+; never returns EOF
+GETC      START
+          LD      GR0, IBUFINIT
+          OR      GR0, GR0
+          JNZ     GETC1
+          ; init
+          IN      IBUF, IBUFSZ
+          LD      GR1, =0
+          ST      GR1, IIDX
+          LD      GR1, =1
+          ST      GR1, IBUFINIT
+GETC1     LD      GR1, IIDX
+          SUBL    GR1, IBUFSZ
+          JNZ     GETC2
+          ; at EOS
+          LD      GR1, =0
+          ST      GR1, IIDX
+          LD      GR1, =0
+          ST      GR1, IBUFSZ
+          LD      GR1, =0
+          ST      GR1, IBUFINIT
+          LD      GR0, =10
+          RET
+GETC2     LD      GR1, IIDX
+          LD      GR0, IBUF, GR1
+          OR      GR0, GR0
+          JNZ     GETC3
+          ; at EOL
+          LD      GR1, =0
+          ST      GR1, IIDX
+          LD      GR1, =0
+          ST      GR1, IBUFSZ
+          LD      GR1, =0
+          ST      GR1, IBUFINIT
+          LD      GR0, =10
+          RET
+GETC3     ADDL    GR1, =1
+          ST      GR1, IIDX
+          RET
+IBUFSZ    DC      0
+IBUFINIT  DC      0
+IIDX      DC      0
+IBUF      DS      256
+          END
+
+; parameter:GR0
+; if GR0 == 10: print line
+; if GR0 == 0: print line when buffer is not empty
+PUTC      START
+          LD      GR1, GR0
+          OR      GR1, GR1
+          JZE     IFNEMPTY
+          LD      GR1, GR0
+          SUBL    GR1, =10
+          JZE     FLUSH
+          LD      GR1, OIDX
+          ST      GR0, OBUF, GR1
+          ADDL    GR1, =1
+          ST      GR1, OIDX
+          SUBL    GR1, =126
+          JZE     FLUSH
+          RET
+IFNEMPTY  LD      GR1, OIDX
+          OR      GR1, GR1
+          JZE     ENDPUTC
+FLUSH     OUT     OBUF, OIDX
+          LD      GR1, =0
+          ST      GR1, OIDX
+ENDPUTC   RET
+OIDX      DS      1
+OBUF      DS      128
+          END
+""".split("\n")
+        dst = [
+            "PROG      START",
+            "          LD GR1, =16"
+        ]
+        labels = self.get_used_labels()
+
+        tab = " " * 10
+
+        i = 0
+        while i < len(self.src):
+            lbl, op, arg = self.src[i]
+
+            if lbl in labels:
+                s = f"L{labels.index(lbl)}"
+                s += " " * (10 - len(s))
+            else:
+                s = tab
+
+            if op == "":
+                dst.append(s + "NOP")
+            
+            if op == "jz":
+                dst.append(s + "LD GR0, DATA, GR1")
+                dst.append(tab + "OR GR0, GR0")
+                dst.append(tab + f"JZE L{labels.index(arg)}")
+            if op == "jmp":
+                dst.append(tab + f"JUMP L{labels.index(arg)}")
+            if op == "+":
+                j = self.skip_mergeable(i, labels) 
+                dst.append(s + "LD GR0, DATA, GR1")
+                dst.append(tab + f"ADDL GR0, ={j - i}")
+                dst.append(tab + "ST GR0, DATA, GR1")
+                i = j
+                continue
+            if op == "-":
+                j = self.skip_mergeable(i, labels) 
+                dst.append(s + "LD GR0, DATA, GR1")
+                dst.append(tab + f"SUBL GR0, ={j - i}")
+                dst.append(tab + "ST GR0, DATA, GR1")
+                i = j
+                continue
+            if op == ">":
+                j = self.skip_mergeable(i, labels) 
+                dst.append(s + f"ADDL GR1, ={j - i}")
+                i = j
+                continue
+            if op == "<":
+                j = self.skip_mergeable(i, labels) 
+                dst.append(s + f"SUBL GR1, ={j - i}")
+                i = j
+                continue
+            if op == ",":
+                dst.append(s + "LD GR4, GR1")
+                dst.append(tab + "CALL GETC")
+                dst.append(tab + "LD GR1, GR4")
+                dst.append(tab + "ST GR0, DATA, GR1")
+            if op == ".":
+                dst.append(s + "LD GR4, GR1")
+                dst.append(tab + "LD GR0, DATA, GR1")
+                dst.append(tab + "CALL PUTC")
+                dst.append(tab + "LD GR1, GR4")
+            if op == "exit":
+                dst.append(s + "JUMP ONEXIT")
+
+            i += 1
+
+        dst.append("ONEXIT    LD GR0, =10")
+        dst.append(tab + "CALL PUTC")
+        dst.append(tab + "RET")
+        dst.append("DATA      DS 128")
+        dst.append(tab + "END")
+        dst += lib
+
+        return dst
+
+
 class IntermediateToErp(IntermediateCompiler):
     def __init__(self, src: List[Tuple[int, str, int]]):
         super().__init__(src)
@@ -477,14 +672,15 @@ if __name__ == "__main__":
             print(f"python {sys.argv[0]} [options] < src > dst")
             print("options:")
             print("  -lang=lang_name   select target language")
-            print("target languages: C, erp(only for helloworld), x86")
+            print("target languages: C, erp(only for helloworld), x86, CASL2")
             sys.exit(0)
 
     m2d = Minimal2D("".join(sys.stdin.readlines()))
     compilers = {
         "C": IntermediateToC,
         "erp": IntermediateToErp,
-        "x86": IntermediateToX86
+        "x86": IntermediateToX86,
+        "CASL2": IntermediateToCASL2
     }
 
     if lang not in compilers.keys():
