@@ -10,9 +10,9 @@ class SNUSP(mtdc.Abstract2DBrainfuck):
     """language definition"""
     NAME = "SNUSP(Core SNUSP)"
     HELP = ""
-    SYMS_START = []
+    SYMS_START = ["$"]
     SYMS_EXIT = []
-    SYMS_TURN = list("LRUD")
+    SYMS_TURN = []
     SYMS_TURNNZ = []
     SYMS_MIRROR_R_TO_U = ["/"]
     SYMS_MIRROR_R_TO_D = ["\\"]

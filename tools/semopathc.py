@@ -8,8 +8,8 @@ import mtdc
 
 class SeMoPATH(mtdc.Abstract2DBrainfuck):
     """language definition"""
-    NAME = "PATH"
-    HELP = ""
+    NAME = "SeMo-PATH"
+    HELP = "  -mem_width=N  select memory width\n"
     SYMS_START = ["$"]
     SYMS_EXIT = ["#"]
     SYMS_TURN = []
@@ -35,6 +35,10 @@ class SeMoPATH(mtdc.Abstract2DBrainfuck):
 
     def __init__(self, source: str = None, argv: List[str] = []) -> None:
         super().__init__(source, argv)
+
+        for arg in argv:
+            if arg.startswith("-mem_width="):
+                self.data_width = int(arg[11:])
 
 if __name__ == "__main__":
     import sys
