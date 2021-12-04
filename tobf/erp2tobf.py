@@ -641,7 +641,11 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
         elif tkn == "putc":
             dst.append(f"{dstack_name}:@pop print")
         elif tkn in ["getInt", ","]:
+            dst.append(f"unload out")
+            dst.append("loadas in code mod_input")
             dst.append(f"in:readlnint x")
+            dst.append(f"unload in")
+            dst.append("loadas out code mod_print")
             append_push("x")
         elif tkn in ["putInt", "."]:
             append_pop("x")
@@ -747,7 +751,7 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
         " ".join([f"_{v}" for v in vars]) + " x y z b e tmp0 tmp1",
         "tmp tmp0 tmp1",
         "loadas out code mod_print",
-        "loadas in code mod_input",
+        # "loadas in code mod_input",
         "loadas erp code mod_jump"
     ]
 

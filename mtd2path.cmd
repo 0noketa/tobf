@@ -1,5 +1,5 @@
 @setlocal
-@set ext=m2d
+@set ext=path
 @call "%~pd0\prepare_tobf.cmd"
 @call :main %*
 @endlocal
