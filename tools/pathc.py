@@ -13,7 +13,7 @@ class PATH(mtdc.Abstract2DBrainfuck):
     SYMS_START = ["$"]
     SYMS_EXIT = ["#"]
     SYMS_TURN = []
-    SYMS_TURNNZ = "<>^v"
+    SYMS_TURNNZ = list("<>^v")
     SYMS_MIRROR_R_TO_U = ["/"]
     SYMS_MIRROR_R_TO_D = ["\\"]
     SYMS_MIRROR_R_TO_L = []

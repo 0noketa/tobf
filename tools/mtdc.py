@@ -1115,6 +1115,117 @@ class IntermediateToErp(IntermediateCompiler):
 
         return dst
 
+class IntermediateToBrainfuck(IntermediateCompiler):
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, n_args=0, n_results=0):
+        super().__init__(src, mem_size)
+
+        self.n_args = n_args
+        self.n_results = n_results
+
+    def compile(self) -> List[str]:
+        # memory layout: continue, current_label, next_label, n, m, 0, cell0, 1, cell1, 1, ..., 1, current_cell, 0, next_cell, 0, ...
+        n_registers = 5
+        dst = []
+
+        at_current_cell = ">" * n_registers + ">>[>>]<"
+        at_first_cell = "<[<<]" + "<" * n_registers
+
+
+        if self.n_args > 0:
+            for i in range(self.n_args):
+                j = i * 2 + n_registers + 1
+                dst.append("[" + ">" * j + "+" + "<" * j + "-]>")
+            dst.append("<" * self.n_args)
+
+        dst.extend([
+            "+[ begin",
+            ">[>>>+<<<-]+>>>[<+<+<+>>>-]+<[>-<[-]]>[ <<<< initial label",
+            at_current_cell
+        ])
+
+        current_label = -1
+        n_jumps = 0
+        labels = self.get_used_labels()
+
+        for lbl, op, arg in self.src:
+            if lbl != -1:
+                current_label = labels.index(lbl)
+
+                dst.extend([
+                    at_first_cell,
+                    ">>>>"
+                    "-]" + "]" * n_jumps,
+                    "<<[>>+<<-]>>[<+<+>>-]+<" + "-" * (current_label + 1) + "[>-<[-]]>[" + f"label{current_label}",
+                    "<<<<",
+                    at_current_cell
+                ])
+                n_jumps = 0
+            
+            if op == "jz":
+                dst.extend([
+                    at_first_cell,
+                    ">>>+<<<",
+                    at_current_cell,
+                    "[>+<-]>[<+>>>+<<-]>>[",
+                    "<<<" + at_first_cell,
+                    ">>>-<<<",
+                    at_current_cell + ">>>",
+                    "[-]]<<<",
+                    at_first_cell,
+                    ">>>[>-<",
+                    "<[-]<[-]" + "+" * (labels.index(arg) + 1) + f"jz {labels.index(arg)}",
+                    ">>-]>[<<<<" + at_current_cell
+                ])
+                n_jumps += 1
+            if op == "jmp":
+                dst.extend([
+                    at_first_cell,
+                    ">[-]" + "+" * (labels.index(arg) + 1) + ">[-]>>[-][" f"jmp {labels.index(arg)}",
+                    "<<<<" + at_current_cell
+                ])
+                n_jumps += 1
+            if op == "+":
+                dst.append("+" * arg)
+            if op == "-":
+                dst.append("-" * arg)
+            if op == ">":
+                dst.append(">+>" * arg)
+            if op == "<":
+                dst.append("<-<" * arg)
+            if op == ",":
+                dst.append(",")
+            if op == ".":
+                dst.append(".")
+            if op == "assign":
+                dst.append("[-]" + "+" * arg)
+            if op == "exit":
+                dst.extend([
+                    at_first_cell,
+                    "[-]>[-]>[-]" + "+" * (len(labels) + 1) + f"exit(jmp {len(labels)})",
+                    ">>[-][<<<<",
+                    at_current_cell
+                ])
+                n_jumps += 1
+
+        if current_label != -1:
+            dst.extend([
+                at_first_cell + ">>>>",
+                "-]" + "]" * n_jumps + "<<",
+                "[>>+<<-]>>[<+<+>>-]+<" + "-" * (len(labels) + 1) + "[>-<[-]]>[" + f"label{len(labels)}",
+                "<<<<[-]>>>>"
+                "[-]]",
+                "<<[-]<<] end"
+            ])
+
+        if self.n_results > 0:
+            dst.append(">" * self.n_results)
+
+            for i in range(self.n_results - 1, -1, -1):
+                j = i * 2 + n_registers + 1
+                dst.append(">" * j + "<[" + "<" * j + "+" + ">" * j + "-]" + "<" * j)
+
+        return dst
+
 class IntermediateInterpreter(IntermediateCompiler):
     def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
         super().__init__(src, mem_size)
@@ -1223,6 +1334,8 @@ target languages:
     compilers = {
         "run": IntermediateInterpreter,
         "C": IntermediateToC,
+        "Brainfuck": IntermediateToBrainfuck,
+        "bf": IntermediateToBrainfuck,
         "Enigma2D": IntermediateToEnigma2D,
         "Generic2DBrainfuck": IntermediateToGeneric2DBrainfuck,
         "2b": IntermediateToGeneric2DBrainfuck,
