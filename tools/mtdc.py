@@ -2,7 +2,7 @@
 #
 # Minimal-2D:
 # https://esolangs.org/wiki/Minimal-2D
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Callable
 import sys
 
 class CellInfo:
@@ -40,8 +40,28 @@ class CellInfo:
 
         raise Exception(f"unknown direction ({dx}, {dy})")
 
+class LoaderState:
+    def __init__(self,
+            code: List[Tuple[int, str, int]],
+            lbl: int, x: int, y: int, dx: int, dy: int, 
+            stubs: List[int], 
+            stk: List[Tuple[int, int, int, int]]
+            ) -> None:
+        self.code = code
+        self.lbl = lbl
+        self.x = x
+        self.y = y
+        self.dx = dx
+        self.dy = dy
+        self.stubs = stubs
+        self.stk = stk
+
+    def get(self) -> Tuple[List[Tuple[int, str, int]], int, int, int, int, int]:
+        return (self.code, self.lbl, self.x, self.y, self.dx, self.dy, self.stubs, self.stk)
+
 class Abstract2DBrainfuck:
     """abstract superset of some 2D Brainfuck that has not complex features"""
+
 
     """language definition"""
     NAME = "language name"
@@ -56,6 +76,13 @@ class Abstract2DBrainfuck:
     SYMS_MIRROR_H = [] # L<->R 
     SYMS_MIRROR_V = [] # U<->D
     SYMS_MIRRORNZ_R_TO_L = []
+    SYMS_ROT_R = []
+    SYMS_ROT_L = []
+    SYMS_ROTZ_R = []
+    SYMS_ROTZ_L = []
+    SYMS_ROTNZ_R = []
+    SYMS_ROTNZ_L = []
+    SYMS_ROTZNZ_R_L = []
     SYMS_BF_BRACKETS = []
     SYMS_SKIP = [] # skip next
     SYMS_SKIPZ = [] # if zero
@@ -67,6 +94,8 @@ class Abstract2DBrainfuck:
     SYMS_DEC = []
     SYMS_PUT = []
     SYMS_GET = []
+    # instructions with other functions
+    INS_TBL: Dict[str, Callable[[LoaderState], LoaderState]] = {}
     DEFAULT_MEM_WIDTH = -1 # if not -1, uses 2D memory
 
     def __init__(self, source: str = None, argv: List[str] = []) -> None:
@@ -141,6 +170,16 @@ class Abstract2DBrainfuck:
 
         return (x + dx, y + dy)
 
+    def rotate_dir(self, dx, dy, clockwise=True) -> Tuple[int, int]:
+        if dx == 1 if clockwise else dx == -1:
+            return (0, 1)
+        if dy == 1 if clockwise else dy == -1:
+            return (-1, 0)
+        if dx == -1 if clockwise else dx == 1:
+            return (0, -1)
+        if dy == -1 if clockwise else dy == 1:
+            return (1, 0)
+
     def compile_to_intermediate(self) -> List[Tuple[int, str, int]]:
         cls = type(self)
         if len(cls.SYMS_BF_BRACKETS):
@@ -160,10 +199,12 @@ class Abstract2DBrainfuck:
 
         while len(stk) > 0 or self.is_valid_pos(x, y):
             onexit = False
+            lbl0 = -1
 
             if len(stk) > 0 and not self.is_valid_pos(x, y):
                 code.append((lbl, "exit", 0))
                 onexit = True
+                c = " "
             else:
                 cell_labels = labels[y][x]
                 c = self.source[y][x]
@@ -227,6 +268,7 @@ class Abstract2DBrainfuck:
 
                 continue
             elif c in cls.SYMS_SKIP:
+                code.append((lbl, "", 0))
                 x += dx
                 y += dy
             elif c in cls.SYMS_PUT:
@@ -274,6 +316,40 @@ class Abstract2DBrainfuck:
                 stk.append((x3, y3, dx, dy))
 
                 code.append((lbl, "jz", -1))
+            elif c in cls.SYMS_ROT_L:
+                code.append((lbl, "", 0))
+                dx, dy = self.rotate_dir(dx, dy, clockwise=False)
+            elif c in cls.SYMS_ROT_R:
+                code.append((lbl, "", 0))
+                dx, dy = self.rotate_dir(dx, dy)
+            elif c in cls.SYMS_ROTZ_R:
+                dx2, dy2 = self.rotate_dir(dx, dy)
+
+                stubs.append(len(code))
+                stk.append((x + dx2, y + dy2, dx2, dy2))
+
+                code.append((lbl, "jz", -1))
+            elif c in cls.SYMS_ROTNZ_R:
+                dx2, dy2 = self.rotate_dir(dx, dy)
+
+                stubs.append(len(code))
+                stk.append((x + dx, y + dy, dx, dy))
+
+                code.append((lbl, "jz", -1))
+
+                dx = dx2
+                dy = dy2
+            elif c in cls.SYMS_ROTZNZ_R_L:
+                dx2, dy2 = self.rotate_dir(dx, dy)
+                dx3, dy3 = self.rotate_dir(dx, dy, False)
+
+                stubs.append(len(code))
+                stk.append((x + dx2, y + dy2, dx2, dy2))
+
+                code.append((lbl, "jz", -1))
+
+                dx = dx3
+                dy = dy3
             elif c == bf_bracket_left:
                 x2, y2 = self.skip_bracket(x, y, dx, dy)
 
@@ -299,6 +375,11 @@ class Abstract2DBrainfuck:
 
                 dx = -dx
                 dy = -dy
+            elif c in cls.INS_TBL.keys():
+                stat = cls.INS_TBL[c](LoaderState(code, lbl, x, y, dx, dy, stubs, stk))
+                code, lbl, x, y, dx, dy, stubs, stk = stat.get()
+
+                continue
             else:
                 code.append((lbl, "", 0))
 
@@ -340,18 +421,167 @@ class Minimal2D(Abstract2DBrainfuck):
         super().__init__(source, argv)
 
 
+class CompilerState:
+    def __init__(self, labels: List[int]) -> None:
+        self.labels = labels
+
+
+class InterpreterState:
+    def __init__(self, data: List[int], ptr: int, ip: int):
+        self.data = data
+        self.ptr = ptr
+        self.ip = ip
+
+    def get(self):
+        return (self.data, self.ptr, self.ip)
+
+class IntermediateExtension:
+    def __init__(self) -> None:
+        pass
+
+    def is_register_based(self) -> bool:
+        """True when language uses registers instead of array"""
+        return False
+    def n_registers(self) -> int:
+        return 0
+    def n_hidden_registers(self) -> int:
+        return 0
+
+    def has_instruction(self, name: str) -> bool:
+        return False
+    def is_instruction_for_jump(self, name: str) -> bool:
+        return False
+    def is_instruction_with_sideefect(self, name: str) -> bool:
+        return False
+    def is_mageable_instruction(self, name: str) -> bool:
+        return False
+    def requires_initialization(self) -> bool:
+        return False
+    def requires_finalization(self) -> bool:
+        return False
+
+    # for compilers
+    def get_initializer(self, target_language: str, stat: CompilerState) -> List[str]:
+        return []
+    def get_finalizer(self, target_language: str, stat: CompilerState) -> List[str]:
+        return []
+    def can_compile_to(self, target_language: str, stat: CompilerState) -> bool:
+        return False
+    def compile_instruction(self, target_language: str, op: str, arg: int, stat: CompilerState) -> List[str]:
+        return []
+
+    # for interpreters
+    def initialize(self, stat: InterpreterState) -> InterpreterState:
+        """returns modified state"""
+        return stat
+    def finalize(self, stat: InterpreterState) -> InterpreterState:
+        """returns modified state"""
+        return stat
+    def can_invoke(self) -> bool:
+        return False
+    def invoke_instruction(self, name: str, arg: int, stat: InterpreterState) -> InterpreterState:
+        """returns modified state"""
+        return stat
+
 class IntermediateCompiler:
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
+    NAME = ""
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
         self.src = src
         self.mem_size = mem_size
+        self.ex = extension
 
+        self.known_ins = []
+
+        labels = self.get_used_labels()
+        act_labels = self.get_active_labels()
+
+        for i in labels:
+            if i not in act_labels:
+                sys.stderr.write(f"label {i} does not exist.\n")
+
+        self.update_labels()
         self.optimize()
 
+    def get_extension_initializer(self, stat: CompilerState) -> List[str]:
+        dst = []
+        if self.ex is not None:
+            if self.ex.can_compile_to(type(self).NAME) and self.ex.requires_initialization():
+                dst.extend(self.ex.get_initializer(type(self).NAME, stat))
+
+        return dst
+
+    def get_extension_finalizer(self, stat: CompilerState) -> List[str]:
+        dst = []
+        if self.ex is not None:
+            if self.ex.can_compile_to(type(self).NAME) and self.ex.requires_finalization():
+                dst.extend(self.ex.get_finalizer(type(self).NAME, stat))
+
+        return dst
+
+    def compile_extension(self, op: str, arg: int, stat: CompilerState) -> List[str]:
+        if self.ex is not None:
+            if self.ex.can_compile_to(type(self).NAME) and self.ex.has_instruction(op):
+                return self.ex.compile_instruction(type(self).NAME, op, arg, stat)
+
+        return []
+
+    def initialize_extension(self, stat: InterpreterState) -> InterpreterState:
+        if self.ex is not None:
+            if self.ex.can_invoke() and self.ex.requires_initialization():
+                stat = self.ex.initialize(stat)
+
+        return stat
+
+    def finalize_extension(self, stat: InterpreterState) -> InterpreterState:
+        if self.ex is not None:
+            if self.ex.can_invoke() and self.ex.requires_finalization():
+                stat = self.ex.finalize(stat)
+
+        return stat
+
+    def invoke_extension(self, op: str, arg: int, stat: InterpreterState) -> InterpreterState:
+        if self.ex is not None:
+            if self.ex.can_invoke() and self.ex.has_instruction(op):
+                return self.ex.invoke_instruction(op, arg, stat)
+
+        return stat
+
+    def is_extension(self, name: str) -> bool:
+        if self.ex is not None:
+            if self.ex.has_instruction(name):
+                return True
+
+        return False
+
+    def is_instruction_for_jump(self, name: str) -> bool:
+        if name in ["jmp", "jz"]:
+            return True
+
+        if self.ex is not None:
+            if self.ex.has_instruction(name) and self.ex.is_instruction_for_jump(name):
+                return True
+
+        return False
+
+    def is_margeable_instruction(self, name: str) -> bool:
+        if name in [">", "<", "+", "-"]:
+            return True
+
+        if self.ex is not None:
+            if self.ex.has_instruction(name) and self.ex.is_mageable_instruction(name):
+                return True
+
+        return False
+
     def compile(self) -> List[str]:
-        return ""
+        return []
 
     def get_used_labels(self) -> List[int]:
-        return sorted(list(set([arg for lbl, op, arg in self.src if op in ["jmp", "jz"]])))
+        return sorted(list(set([arg for lbl, op, arg in self.src if self.is_instruction_for_jump(op)])))
+
+    def get_active_labels(self) -> List[int]:
+        return sorted(list(set([lbl for lbl, op, arg in self.src if lbl != -1])))
 
     def skip_mergeable(self, idx: int, labels: List[int] = None) -> Tuple[int, int]:
         if labels is None:
@@ -362,14 +592,12 @@ class IntermediateCompiler:
 
         lbl0, op0, arg0 = self.src[idx]
 
-        if op0 not in "+-><":
+        if not self.is_margeable_instruction(op0):
             return (idx + 1, arg0)
 
-        for i in range(idx + 1, len(self.src)):
-            lbl, op, arg = self.src[i]
-
+        for i, (lbl, op, arg) in enumerate(self.src[idx + 1:]):
             if op != op0 or lbl in labels:
-                return (i, arg0)
+                return (idx + 1 + i, arg0)
 
             arg0 += arg
 
@@ -382,24 +610,37 @@ class IntermediateCompiler:
         while i < len(self.src):
             lbl, op, arg = self.src[i]
 
-            if op in ["+", "-", ">", "<"]:
+            if self.is_margeable_instruction(op):
                 j, arg2 = self.skip_mergeable(i, labels) 
                 self.src[i] = (lbl, op, arg2)
                 self.src = self.src[:i + 1] + self.src[j:]
 
             i += 1
 
-    def replace_destination_labels(self, from_: int, to_: int):
+    def rename_label(self, from_: int, to_: int):
+        x = len(self.src)
         for i, (lbl, op, arg) in enumerate(self.src):
-            if op in ["jmp", "jz"] and arg == from_:
+            if lbl == from_:
+                self.src[i] = (to_, op, arg)
+
+            if self.is_instruction_for_jump(op) and arg == from_:
                 self.src[i] = (lbl, op, to_)
+
+    def update_labels(self):
+        labels = self.get_used_labels()
+
+        for i, (lbl, op, arg) in enumerate(self.src):
+            if lbl in labels:
+                self.rename_label(lbl, i)
+            else:
+                self.src[i] = (-1, op, arg)
 
     def optimize(self):
         optimized = True
         while optimized:
-            # sys.stderr.write(f"code size: {len(self.src)}\n")
             optimized = False
 
+            self.update_labels()
             labels = self.get_used_labels()
 
             i = 0
@@ -423,33 +664,46 @@ class IntermediateCompiler:
 
                     continue
 
-                if op0 in ["jmp", "jz"] and arg0 == lbl and lbl0 not in labels:
+                if self.is_instruction_for_jump(op0) and arg0 == lbl and lbl0 not in labels:
                     self.src.pop(i - 1)
                     optimized = True
 
                     continue
 
-                if op0 in ["jmp", "jz"] and op == "jmp" and arg0 == arg and lbl0 not in labels:
+                if self.is_instruction_for_jump(op0) and arg0 == lbl and lbl0 in labels:
+                    self.rename_label(lbl0, lbl)
+                    self.src.pop(i - 1)
+                    optimized = True
+
+                    continue
+
+                if self.is_instruction_for_jump(op0) and op == "jmp" and arg0 == arg and lbl0 not in labels:
                     self.src.pop(i - 1)
                     optimized = True
 
                     continue
 
                 if op0 in ["jmp", "exit"] and op == "jmp" and lbl in labels:
-                    self.replace_destination_labels(lbl, arg)
+                    self.rename_label(lbl, arg)
+                    self.src.pop(i)
+                    optimized = True
+
+                    continue
+
+                if op0 in ["jmp", "exit"] and lbl not in labels:
                     self.src.pop(i)
                     optimized = True
 
                     continue
 
                 if op0 == "" and lbl0 in labels and lbl in labels:
-                    self.replace_destination_labels(lbl0, lbl)
+                    self.rename_label(lbl0, lbl)
                     self.src.pop(i - 1)
                     optimized = True
 
                     continue
 
-                if op0 == "exit" and op == "exit":
+                if op0 == op and arg0 == arg and (op == "exit" or self.is_instruction_for_jump(op)):
                     if lbl0 not in labels:
                         self.src.pop(i - 1)
                         optimized = True
@@ -461,7 +715,7 @@ class IntermediateCompiler:
 
                         continue
                     elif lbl0 in labels and lbl in labels:
-                        self.replace_destination_labels(lbl, lbl0)
+                        self.rename_label(lbl, lbl0)
                         self.src.pop(i)
                         optimized = True
 
@@ -489,28 +743,6 @@ class IntermediateCompiler:
         self.update_labels()
 
         self.reduce_loops()
-
-    def label2index(self, i):
-        s = [idx for idx, (x, _, _) in enumerate(self.src) if x == i]
-
-        return s[0] if len(s) == 1 else -1
-
-    def update_labels(self):
-        labels = self.get_used_labels()
-
-        for i, (lbl, op, arg) in enumerate(self.src):
-            if op in ["jmp", "jz"]:
-                arg = self.label2index(arg)
-
-            self.src[i] = (lbl, op, arg)
-
-        for i, (lbl, op, arg) in enumerate(self.src):
-            if lbl in labels:
-                lbl = i
-            else:
-                lbl = -1
-
-            self.src[i] = (lbl, op, arg)
 
     def reduce_loops(self):
         i = 0
@@ -566,9 +798,26 @@ class IntermediateCompiler:
             i += 1
 
 
+class IntermediateToText(IntermediateCompiler):
+    NAME = "Abstract2DBrainfuck IL assembly"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
+
+    def compile(self) -> List[str]:
+        dst = []
+
+        for lbl, op, arg in self.src:
+            dst.append(f"{lbl:4}:{op} {arg}")
+
+        return dst
+
+
 class IntermediateToC(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "C"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def compile(self) -> List[str]:
         dst = f"""
@@ -578,13 +827,13 @@ class IntermediateToC(IntermediateCompiler):
 #define DATA_SIZE {self.mem_size}
 #endif
 #ifdef USE_RING
-uint8_t data[DATA_SIZE];
-size_t i = 0;
+static uint8_t data[DATA_SIZE];
+static size_t i = 0;
 #define p (&data[i])
 #define ptr_inc(d) i = (i + d) % DATA_SIZE;
 #define ptr_dec(d) i = (i - d) % DATA_SIZE;
 #else
-uint8_t data[DATA_SIZE], *p = data;
+static uint8_t data[DATA_SIZE], *p = data;
 #ifdef UNSAFE_MODE
 #define ptr_inc(d) p += d;
 #define ptr_dec(d) p -= d;
@@ -596,7 +845,11 @@ uint8_t data[DATA_SIZE], *p = data;
 
 int main(int argc, char *argv[]) {{
 """.split("\n")
+
         labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
         for lbl, op, arg in self.src:
             if lbl != -1:
@@ -604,24 +857,27 @@ int main(int argc, char *argv[]) {{
             
             if op == "jz":
                 dst.append(f"if (!*p) goto L{labels.index(arg)};")
-            if op == "jmp":
+            elif op == "jmp":
                 dst.append(f"goto L{labels.index(arg)};")
-            if op == "+":
+            elif op == "+":
                 dst.append(f"*p += {arg};")
-            if op == "-":
+            elif op == "-":
                 dst.append(f"*p -= {arg};")
-            if op == ">":
+            elif op == ">":
                 dst.append(f'ptr_inc({arg})')
-            if op == "<":
+            elif op == "<":
                 dst.append(f'ptr_dec({arg})')
-            if op == ",":
+            elif op == ",":
                 dst.append(f"*p = getchar();")
-            if op == ".":
+            elif op == ".":
                 dst.append(f"putchar(*p);")
-            if op == "assign":
+            elif op == "assign":
                 dst.append(f"*p = {arg};")
-            if op == "exit":
+            elif op == "exit":
                 dst.append("return 0;")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append("return 0;")
         dst.append("}")
@@ -631,8 +887,10 @@ int main(int argc, char *argv[]) {{
 
 class IntermediateToX86(IntermediateCompiler):
     """uses NASM"""
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "x86"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def compile(self) -> List[str]:
         dst = """
@@ -658,7 +916,11 @@ section .text
 bf_main:
 mov edx, bf_data
 """.split("\n")
+
         labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
         for lbl, op, arg in self.src:
             if lbl != -1:
@@ -668,35 +930,38 @@ mov edx, bf_data
                 dst.append("movzx eax, byte[edx]")
                 dst.append("or eax, eax")
                 dst.append(f"jz .L{labels.index(arg)}")
-            if op == "jmp":
+            elif op == "jmp":
                 dst.append(f"jmp .L{labels.index(arg)}")
-            if op == "+":
+            elif op == "+":
                 dst.append(f"add byte[edx], {arg}")
-            if op == "-":
+            elif op == "-":
                 dst.append(f"sub byte[edx], {arg}")
-            if op == ">":
+            elif op == ">":
                 dst.append(f"add edx, {arg}")
-            if op == "<":
+            elif op == "<":
                 dst.append(f"sub edx, {arg}")
-            if op == ",":
+            elif op == ",":
                 dst.append("push edx")
                 dst.append("call bf_getc")
                 dst.append("pop edx")
                 dst.append("mov byte[edx], al")
-            if op == ".":
+            elif op == ".":
                 dst.append("movzx eax, byte[edx]")
                 dst.append("push edx")
                 dst.append("push eax")
                 dst.append("call bf_putc")
                 dst.append("pop eax")
                 dst.append("pop edx")
-            if op == "assign":
+            elif op == "assign":
                 if arg == 0:
                     dst.append("xor eax, eax")
                 else:
                     dst.append(f"mov eax, {arg}")
-            if op == "exit":
+            elif op == "exit":
                 dst.append("ret")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append("ret")
 
@@ -704,12 +969,18 @@ mov edx, bf_data
 
 
 class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "BrainfuckAsmCompiler"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def compile(self) -> List[str]:
         dst = ["mov $1, 0"]
+
         labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
         for lbl, op, arg in self.src:
             if lbl != -1:
@@ -718,30 +989,33 @@ class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
             if op == "jz":
                 dst.append("mov $0, [$1]")
                 dst.append(f"jz $0, L{labels.index(arg)}")
-            if op == "jmp":
+            elif op == "jmp":
                 dst.append(f"jmp L{labels.index(arg)}")
-            if op == "+":
+            elif op == "+":
                 dst.append("mov $0, [$1]")
                 dst.append(f"add $0, {arg}")
                 dst.append("mov [$1], $0")
-            if op == "-":
+            elif op == "-":
                 dst.append("mov $0, [$1]")
                 dst.append(f"sub $0, {arg}")
                 dst.append("mov [$1], $0")
-            if op == ">":
+            elif op == ">":
                 dst.append(f"add $1, {arg}")
-            if op == "<":
+            elif op == "<":
                 dst.append(f"sub $1, {arg}")
-            if op == ",":
+            elif op == ",":
                 dst.append("in $0")
                 dst.append("mov [$1], $0")
-            if op == ".":
+            elif op == ".":
                 dst.append("mov $0, [$1]")
                 dst.append("out $0")
-            if op == "assign":
+            elif op == "assign":
                 dst.append(f"mov [$1], {arg}")
-            if op == "exit":
+            elif op == "exit":
                 dst.append("jmp Lexit")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append("Lexit:")
 
@@ -749,8 +1023,10 @@ class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
 
 
 class IntermediateToCASL2(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "CASL2"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def make_cas(self, lbl, op, args):
         return f"{lbl:10}{op:18}{args}"
@@ -836,6 +1112,9 @@ OBUF      DS      128
         ]
         labels = self.get_used_labels()
 
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
+
         tab = " " * 10
 
         for lbl, op, arg in self.src:
@@ -846,41 +1125,43 @@ OBUF      DS      128
                 s = tab
 
             if op == "":
-                dst.append(s + "NOP")
-            
-            if op == "jz":
+                dst.append(s + "NOP")            
+            elif op == "jz":
                 dst.append(s + "LD GR0, DATA, GR1")
                 dst.append(tab + "OR GR0, GR0")
                 dst.append(tab + f"JZE L{labels.index(arg)}")
-            if op == "jmp":
+            elif op == "jmp":
                 dst.append(tab + f"JUMP L{labels.index(arg)}")
-            if op == "+":
+            elif op == "+":
                 dst.append(s + "LD GR0, DATA, GR1")
                 dst.append(tab + f"ADDL GR0, ={arg}")
                 dst.append(tab + "ST GR0, DATA, GR1")
-            if op == "-":
+            elif op == "-":
                 dst.append(s + "LD GR0, DATA, GR1")
                 dst.append(tab + f"SUBL GR0, ={arg}")
                 dst.append(tab + "ST GR0, DATA, GR1")
-            if op == ">":
+            elif op == ">":
                 dst.append(s + f"ADDL GR1, ={arg}")
-            if op == "<":
+            elif op == "<":
                 dst.append(s + f"SUBL GR1, ={arg}")
-            if op == ",":
+            elif op == ",":
                 dst.append(s + "LD GR4, GR1")
                 dst.append(tab + "CALL GETC")
                 dst.append(tab + "LD GR1, GR4")
                 dst.append(tab + "ST GR0, DATA, GR1")
-            if op == ".":
+            elif op == ".":
                 dst.append(s + "LD GR4, GR1")
                 dst.append(tab + "LD GR0, DATA, GR1")
                 dst.append(tab + "CALL PUTC")
                 dst.append(tab + "LD GR1, GR4")
-            if op == "assign":
+            elif op == "assign":
                 dst.append(s + f"LD GR0, ={arg}")
                 dst.append(tab + "ST GR0, DATA, GR1")
-            if op == "exit":
+            elif op == "exit":
                 dst.append(s + "JUMP ONEXIT")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append("ONEXIT    LD GR0, =0")
         dst.append(tab + "CALL PUTC")
@@ -893,14 +1174,20 @@ OBUF      DS      128
 
 
 class IntermediateToPATH(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "PATH"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def compile(self) -> List[str]:
+        labels = self.get_used_labels()
+
         dst = [
             "\\"
         ]
-        labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
         current_label = -1
 
@@ -920,7 +1207,7 @@ class IntermediateToPATH(IntermediateCompiler):
                     dst.append("  " + " " * dst_label * 3 + "  !")
                     dst.append("\\v" + " " * dst_label * 3 + f"  / jz {dst_label}")
                     dst.append("//" + " " * dst_label * 3 + "  !")
-            if op == "jmp":
+            elif op == "jmp":
                 dst_label = labels.index(arg)
                 if current_label < dst_label:
                     dst.append("  " + " " * dst_label * 3 + "!")
@@ -930,14 +1217,14 @@ class IntermediateToPATH(IntermediateCompiler):
                     dst.append("  " + " " * dst_label * 3 + "  !")
                     dst.append("\\ " + " " * dst_label * 3 + f"  / jmp {dst_label}")
                     dst.append("  " + " " * dst_label * 3 + "  !")
-            if op in ["+", "-", ",", "."]:
+            elif op in ["+", "-", ",", "."]:
                 for _ in range(arg):
                     dst.append(f"{op}")
-            if op == ">":
+            elif op == ">":
                 dst.append("}")
-            if op == "<":
+            elif op == "<":
                 dst.append("{")
-            if op == "assign":
+            elif op == "assign":
                 dst.append("v")
                 dst.append("-")
                 dst.append("!")
@@ -945,8 +1232,11 @@ class IntermediateToPATH(IntermediateCompiler):
                 dst.append("^")
                 for _ in range(arg):
                     dst.append(f"{op}")
-            if op == "exit":
+            elif op == "exit":
                 dst.append("#")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append("#")
 
@@ -954,8 +1244,10 @@ class IntermediateToPATH(IntermediateCompiler):
 
 
 class IntermediateToEnigma2D(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "Enigma-2D"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def new_code_line(self, labels, lbl_idx=-1):
         if lbl_idx == -1:
@@ -979,9 +1271,11 @@ class IntermediateToEnigma2D(IntermediateCompiler):
             lines[i] += c if idx is not None and i == idx else default
 
     def compile(self) -> List[str]:
-        dst = []
-
         labels = self.get_used_labels()
+
+        dst = []
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
         current_label = -1
 
@@ -1019,23 +1313,26 @@ class IntermediateToEnigma2D(IntermediateCompiler):
                 self.pad_lines(jump_lines, default="   ")
                 self.pad_lines(jump_lines, dst_label, "L")
                 self.pad_lines(jump_lines)
-            if op == "jmp":
+            elif op == "jmp":
                 dst_label = labels.index(arg)
                 code_line += "D"
                 code_line2 += " "
                 self.pad_lines(jump_lines, dst_label, "L")
-            if op in [">", "<", "+", "-", ",", "."]:
+            elif op in [">", "<", "+", "-", ",", "."]:
                 code_line += op * arg
                 code_line2 += " " * arg
                 self.pad_lines(jump_lines, default=" " * arg)
-            if op == "assign":
+            elif op == "assign":
                 code_line += "[-]" + op * arg
                 code_line2 += " " * (arg + 3)
                 self.pad_lines(jump_lines, default="   " + " " * arg)
-            if op == "exit":
+            elif op == "exit":
                 code_line += "D"
                 code_line2 += " "
                 self.pad_lines(jump_lines, len(labels), "R")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append(code_line)
         if len(code_line2.strip()) > 0:
@@ -1049,8 +1346,10 @@ class IntermediateToEnigma2D(IntermediateCompiler):
 
 
 class IntermediateToGeneric2DBrainfuck(IntermediateToEnigma2D):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "Generic 2D Brainfuck"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def from_enigma2d(self, s):
         s = s.replace("l", " ").replace("r", " ").replace("u", " ").replace("d", " ")
@@ -1064,8 +1363,10 @@ class IntermediateToGeneric2DBrainfuck(IntermediateToEnigma2D):
 
 
 class IntermediateToErp(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "erp"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
         if self.mem_size > 256:
             self.mem_size = 256
@@ -1079,9 +1380,12 @@ class IntermediateToErp(IntermediateCompiler):
             ": main",
             "'mem =p"
         ]
+        labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
         branches = 0
-        labels = self.get_used_labels()
 
         for lbl, op, arg in self.src:
             if lbl != -1:
@@ -1091,24 +1395,27 @@ class IntermediateToErp(IntermediateCompiler):
                 dst.append(f"p @ '.Lif{branches} '.L{labels.index(arg)} if jmp")
                 dst.append(f": .Lif{branches}")
                 branches += 1
-            if op == "jmp":
+            elif op == "jmp":
                 dst.append(f"'.L{labels.index(arg)} jmp")
-            if op == "+":
+            elif op == "+":
                 dst.append(f"p @ {arg} + p !")
-            if op == "-":
+            elif op == "-":
                 dst.append(f"p @ {arg} - p !")
-            if op == ">":
+            elif op == ">":
                 dst.append(f"p {arg} + =p")
-            if op == "<":
+            elif op == "<":
                 dst.append(f"p {arg} - =p")
-            if op == ",":
+            elif op == ",":
                 dst.append(f"getc p !")
-            if op == ".":
+            elif op == ".":
                 dst.append(f"p @ putc")
-            if op == "assign":
+            elif op == "assign":
                 dst.append(f"{arg} p !")
-            if op == "exit":
+            elif op == "exit":
                 dst.append("'.Lexit jmp")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append(": .Lexit")
         dst.append(";")
@@ -1116,36 +1423,58 @@ class IntermediateToErp(IntermediateCompiler):
         return dst
 
 class IntermediateToBrainfuck(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, n_args=0, n_results=0):
-        super().__init__(src, mem_size)
+    NAME = "Brainfuck"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None, n_args=0, n_results=0):
+        super().__init__(src, mem_size, extension)
 
         self.n_args = n_args
         self.n_results = n_results
 
     def compile(self) -> List[str]:
-        # memory layout: continue, current_label, next_label, n, m, 0, cell0, 1, cell1, 1, ..., 1, current_cell, 0, next_cell, 0, ...
-        n_registers = 5
+        # memory layout: next_label, n, current_label, m, 0, cell0, 1, cell1, 1, ..., 1, current_cell, 0, next_cell, 0, ...
+        # [[>+>+<<-]->[<+>-]>>+<-[0 -[1 -[2 [->[-]<]
+        # ]>[ label2 [-]]<
+        # ]>[ label1 [-]]<
+        # ]>[ label0 [-]]<
+        # <<]
+        n_registers = 4
         dst = []
+        labels = self.get_used_labels()
 
-        at_current_cell = ">" * n_registers + ">>[>>]<"
-        at_first_cell = "<[<<]" + "<" * n_registers
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
 
+        if self.ex is not None and self.ex.is_register_based():
+            # new memory layout: reg0, reg1, ..., next_label, n, current_label, m
+            at_current_cell = "<" * (self.ex.n_registers() + self.ex.n_hidden_registers())
+            at_first_cell = ">" * (self.ex.n_registers() + self.ex.n_hidden_registers())
 
-        if self.n_args > 0:
-            for i in range(self.n_args):
-                j = i * 2 + n_registers + 1
-                dst.append("[" + ">" * j + "+" + "<" * j + "-]>")
-            dst.append("<" * self.n_args)
+            dst.append(at_first_cell)
 
-        dst.extend([
-            "+[ begin",
-            ">[>>>+<<<-]+>>>[<+<+<+>>>-]+<[>-<[-]]>[ <<<< initial label",
-            at_current_cell
-        ])
+            if self.n_args > self.ex.n_registers():
+                raise Exception(f"can not store all args to registers")
+        else:
+            at_current_cell = ">" * n_registers + ">>[>>]<"
+            at_first_cell = "<[<<]" + "<" * n_registers
+
+            if self.n_args > 0:
+                for i in range(self.n_args):
+                    j = i * 2 + n_registers + 1
+                    dst.append("[" + ">" * j + "+" + "<" * j + "-]>")
+                dst.append("<" * self.n_args)
 
         current_label = -1
         n_jumps = 0
-        labels = self.get_used_labels()
+
+        get_bflabel = (lambda x: len(labels) - labels.index(x))
+
+        dst.extend([
+            "+" * (len(labels) + 1),
+            "[[>+>+<<-]>[<+>-]<->>>+<" + "-[" * (len(labels) + 1) + "[->[-]<]",
+            "]>[<<< initial label",
+            at_current_cell
+        ])
 
         for lbl, op, arg in self.src:
             if lbl != -1:
@@ -1153,10 +1482,10 @@ class IntermediateToBrainfuck(IntermediateCompiler):
 
                 dst.extend([
                     at_first_cell,
-                    ">>>>"
-                    "-]" + "]" * n_jumps,
-                    "<<[>>+<<-]>>[<+<+>>-]+<" + "-" * (current_label + 1) + "[>-<[-]]>[" + f"label{current_label}",
-                    "<<<<",
+                    ">>>",
+                    "[-]" + "]" * n_jumps + "]<",
+                    "]>[" + f"label {current_label} x",
+                    "<<<",
                     at_current_cell
                 ])
                 n_jumps = 0
@@ -1164,76 +1493,92 @@ class IntermediateToBrainfuck(IntermediateCompiler):
             if op == "jz":
                 dst.extend([
                     at_first_cell,
-                    ">>>+<<<",
+                    ">+<",
                     at_current_cell,
-                    "[>+<-]>[<+>>>+<<-]>>[",
-                    "<<<" + at_first_cell,
-                    ">>>-<<<",
-                    at_current_cell + ">>>",
-                    "[-]]<<<",
+                    "[>+<-]>[<+>>>+<<-]>>[<<<",
                     at_first_cell,
-                    ">>>[>-<",
-                    "<[-]<[-]" + "+" * (labels.index(arg) + 1) + f"jz {labels.index(arg)}",
-                    ">>-]>[<<<<" + at_current_cell
+                    ">-<",
+                    at_current_cell,
+                    ">>>[-]]<<<"
                 ])
-                n_jumps += 1
-            if op == "jmp":
                 dst.extend([
                     at_first_cell,
-                    ">[-]" + "+" * (labels.index(arg) + 1) + ">[-]>>[-][" f"jmp {labels.index(arg)}",
-                    "<<<<" + at_current_cell
-                ])
-                n_jumps += 1
-            if op == "+":
-                dst.append("+" * arg)
-            if op == "-":
-                dst.append("-" * arg)
-            if op == ">":
-                dst.append(">+>" * arg)
-            if op == "<":
-                dst.append("<-<" * arg)
-            if op == ",":
-                dst.append(",")
-            if op == ".":
-                dst.append(".")
-            if op == "assign":
-                dst.append("[-]" + "+" * arg)
-            if op == "exit":
-                dst.extend([
-                    at_first_cell,
-                    "[-]>[-]>[-]" + "+" * (len(labels) + 1) + f"exit(jmp {len(labels)})",
-                    ">>[-][<<<<",
+                    ">[>[-]>[-]<<",
+                    "< [-]" + "+" * get_bflabel(arg) + " >-]>>[<<<" + f" jz {labels.index(arg)}",
                     at_current_cell
                 ])
                 n_jumps += 1
+            elif op == "jmp":
+                dst.extend([
+                    at_first_cell,
+                    "[-]" + "+" * get_bflabel(arg) + " >>[-]>[-][<<<" + f"jmp {labels.index(arg)}",
+                    at_current_cell
+                ])
+                n_jumps += 1
+            elif op == "+":
+                dst.append("+" * arg)
+            elif op == "-":
+                dst.append("-" * arg)
+            elif op == ">":
+                dst.append(">+>" * arg)
+            elif op == "<":
+                dst.append("<-<" * arg)
+            elif op == ",":
+                dst.append(",")
+            elif op == ".":
+                dst.append(".")
+            elif op == "assign":
+                dst.append("[-]" + "+" * arg)
+            elif op == "exit":
+                dst.extend([
+                    at_first_cell,
+                    "[-] >>[-]>[-][<<<" + f"exit(jmp {len(labels)})",
+                    at_current_cell
+                ])
+                n_jumps += 1
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
 
-        if current_label != -1:
-            dst.extend([
-                at_first_cell + ">>>>",
-                "-]" + "]" * n_jumps + "<<",
-                "[>>+<<-]>>[<+<+>>-]+<" + "-" * (len(labels) + 1) + "[>-<[-]]>[" + f"label{len(labels)}",
-                "<<<<[-]>>>>"
-                "[-]]",
-                "<<[-]<<] end"
-            ])
+                if self.is_instruction_for_jump(op):
+                    n_jumps += 1
 
-        if self.n_results > 0:
-            dst.append(">" * self.n_results)
 
-            for i in range(self.n_results - 1, -1, -1):
-                j = i * 2 + n_registers + 1
-                dst.append(">" * j + "<[" + "<" * j + "+" + ">" * j + "-]" + "<" * j)
+        dst.extend([
+            at_first_cell,
+            ">>>[-] " + "]" * n_jumps + " ]<",
+            "<<] end",
+            ">>[-]<<"
+        ])
+
+        if self.ex is not None and self.ex.is_register_based():
+            dst.append(at_current_cell)
+
+            if self.n_results > self.ex.n_registers():
+                raise Exception(f"can not store registers to all results")
+        else:
+            if self.n_results > 0:
+                dst.append(">" * self.n_results)
+
+                for i in range(self.n_results - 1, -1, -1):
+                    j = i * 2 + n_registers + 1
+                    dst.append(">" * j + "<[" + "<" * j + "+" + ">" * j + "-]" + "<" * j)
 
         return dst
 
 class IntermediateInterpreter(IntermediateCompiler):
-    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int):
-        super().__init__(src, mem_size)
+    NAME = "interpreter"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
 
     def compile(self) -> List[str]:
         data_size = self.mem_size
+        labels = self.get_used_labels()
         data = [0 for _ in range(data_size)]
         ptr = 0
+        stat = CompilerState(labels)
+        stat = self.initialize_extension(stat)
 
         i = 0
         while i < len(self.src):
@@ -1243,33 +1588,45 @@ class IntermediateInterpreter(IntermediateCompiler):
                 if data[ptr] == 0:
                     i = arg
                     continue
-            if op == "jmp":
+            elif op == "jmp":
                 i = arg
                 continue
-            if op == "+":
+            elif op == "+":
                 data[ptr] = (data[ptr] + arg) & 0xFF
-            if op == "-":
+            elif op == "-":
                 data[ptr] = (data[ptr] - arg) & 0xFF
-            if op == ">":
+            elif op == ">":
                 ptr = (ptr + arg) % data_size
-            if op == "<":
+            elif op == "<":
                 ptr = (ptr - arg) % data_size
-            if op == ",":
+            elif op == ",":
                 s = sys.stdin.read(1)
                 data[ptr] = ord(s) if len(s) else 255
-            if op == ".":
+            elif op == ".":
                 sys.stdout.write(chr(data[ptr]))
-            if op == "assign":
+                sys.stdout.flush()
+            elif op == "assign":
                 data[ptr] = arg
-            if op == "exit":
+            elif op == "exit":
                 break
+            elif self.is_extension(op):
+                stat = InterpreterState(data, ptr, i)
+                stat = self.invoke_extension(op, arg, stat)
+                data, ptr, i = stat.get()
+
+                continue
+            else:
+                pass
 
             i += 1
+
+        stat = CompilerState(labels)
+        stat = self.finalize_extension(stat)
 
         return []
 
 
-def main(loader=Minimal2D):
+def main(loader=Minimal2D, extension: IntermediateExtension = None):
     import sys
     import io
 
@@ -1294,6 +1651,9 @@ def main(loader=Minimal2D):
         if arg == "-run":
             lang = "run"
 
+        if arg == "-disasm":
+            lang = "disasm"
+
         if arg in ["-?", "-h", "-help", "--help"]:
             print(f"""{loader.NAME} to 1D language (or flattened 2D language) compiler
 python {sys.argv[0]} [options] < src > dst
@@ -1307,6 +1667,7 @@ options:
 {loader.HELP}
 target languages:
   C
+  Brainfuck     labels should be fewer than 253
   Generic2DBrainfuck(2b)
                 Generic 2D Brainfuck
   Enigma2D      Enigma-2D
@@ -1333,6 +1694,7 @@ target languages:
     m2d = loader(src, sys.argv)
     compilers = {
         "run": IntermediateInterpreter,
+        "disasm": IntermediateToText,
         "C": IntermediateToC,
         "Brainfuck": IntermediateToBrainfuck,
         "bf": IntermediateToBrainfuck,
@@ -1352,8 +1714,18 @@ target languages:
 
         return 1
 
+    if extension is not None:
+        if lang == "run" and not extension.can_invoke():
+            sys.stderr.write(f"interpreter can not execute {loader.NAME}\n")
+
+            return 1
+        if lang != "run" and not extension.can_compile_to(lang):
+            sys.stderr.write(f"can not compile {loader.NAME} to {lang}\n")
+
+            return 1
+
     code = m2d.compile_to_intermediate()
-    compiler = compilers[lang](code, mem_size)
+    compiler = compilers[lang](code, mem_size, extension)
 
     print("\n".join(compiler.compile()))
 

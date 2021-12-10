@@ -1,0 +1,13 @@
+   .?.!.!.?.?.?.? 0  .?.!.!.?.?.?.? 00  S ;+; ;-; ; ; ; 0
+                      S S S S S SR  01  S ;+; ;-; ; ;+; 1
+RR                    + + + + + +RR
+R                     ?S?S?S?S?SR
+               R  1  .?.!.!.?.?.?.? 10  S ;+; ;-; ; ;+; 1
+ S  S S S S S SRR     S S S S S SR  11  S ;+; ;-; ; ; ; 0
+R?  + + + + + +       + + + + + +RR
+R+ S?S?S?S?S?S?S      ?S?S?S?S?SR
+R                                   err S+;-; ; ;+;-;+; E
+RR 
+
+input 2 columns digits
+prints result of XOR
