@@ -3,11 +3,11 @@
 # Core SNUSP:
 # https://esolangs.org/wiki/SNUSP#Core_SNUSP
 from typing import Tuple, List
-import mtdc
+import atdbf
 
 
-class SNUSP(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+class SNUSP(atdbf.Abstract2DBrainfuck):
+    # language definition
     NAME = "SNUSP(Core SNUSP)"
     HELP = ""
     SYMS_START = ["$"]
@@ -39,5 +39,5 @@ class SNUSP(mtdc.Abstract2DBrainfuck):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(mtdc.main(SNUSP))
+    sys.exit(atdbf.main(SNUSP))
 

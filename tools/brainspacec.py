@@ -3,11 +3,11 @@
 # BrainSpace:
 # https://esolangs.org/wiki/BrainSpace_1.0
 from typing import Tuple, List
-import mtdc
+import atdbf
 
 
-class BrainSpace(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+class BrainSpace(atdbf.Abstract2DBrainfuck):
+    # language definition
     NAME = "BrainSpace"
     HELP = ""
     SYMS_START = []
@@ -46,5 +46,5 @@ class BrainSpace(mtdc.Abstract2DBrainfuck):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(mtdc.main(BrainSpace))
+    sys.exit(atdbf.main(BrainSpace))
 

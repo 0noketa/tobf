@@ -3,11 +3,11 @@
 # Generic 2D Brainfuck:
 # https://esolangs.org/wiki/Generic_2D_Brainfuck
 from typing import Tuple, List, Dict
-import mtdc
+import atdbf
 
 
-class Generic2DBrainfuck(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+class Generic2DBrainfuck(atdbf.Abstract2DBrainfuck):
+    # language definition
     NAME = "Generic 2D Brainfuck"
     HELP = "  -mem_width=N  select memory width\n"
     SYMS_START = []
@@ -44,5 +44,5 @@ class Generic2DBrainfuck(mtdc.Abstract2DBrainfuck):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(mtdc.main(Generic2DBrainfuck))
+    sys.exit(atdbf.main(Generic2DBrainfuck))
 

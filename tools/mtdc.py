@@ -1,14 +1,15 @@
-# Enigma-2D to 1D language compiler
+# Minimal-2D to 1D language compiler
 #
-# Enigma-2D:
-# https://esolangs.org/wiki/Enigma-2D
-from typing import Tuple, List
+# Minimal-2D:
+# https://esolangs.org/wiki/Minimal-2D
+from typing import Tuple, List, Dict, Callable
+import sys
 import atdbf
 
 
-class Enigma2D(atdbf.Minimal2D):
+class Minimal2D(atdbf.Abstract2DBrainfuck):
     # language definition
-    NAME = "Enigma-2D"
+    NAME = "Minimal-2D"
     HELP = ""
     SYMS_START = []
     SYMS_EXIT = []
@@ -20,9 +21,9 @@ class Enigma2D(atdbf.Minimal2D):
     SYMS_MIRROR_H = []
     SYMS_MIRROR_V = []
     SYMS_MIRRORNZ_R_TO_L = []
-    SYMS_BF_BRACKETS = list("[]")
+    SYMS_BF_BRACKETS = []
     SYMS_SKIP = []
-    SYMS_SKIPZ = []
+    SYMS_SKIPZ = ["/"]
     SYMS_PTR_INC = [">"]
     SYMS_PTR_DEC = ["<"]
     SYMS_PTR_UP = []
@@ -37,9 +38,7 @@ class Enigma2D(atdbf.Minimal2D):
         super().__init__(source, argv)
 
 
-
 if __name__ == "__main__":
     import sys
 
-    sys.exit(atdbf.main(Enigma2D))
-
+    sys.exit(atdbf.main(Minimal2D))

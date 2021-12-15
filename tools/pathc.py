@@ -3,11 +3,11 @@
 # PATH:
 # https://esolangs.org/wiki/PATH
 from typing import Tuple, List
-import mtdc
+import atdbf
 
 
-class PATH(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+class PATH(atdbf.Abstract2DBrainfuck):
+    # language definition
     NAME = "PATH"
     HELP = ""
     SYMS_START = ["$"]
@@ -39,5 +39,5 @@ class PATH(mtdc.Abstract2DBrainfuck):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(mtdc.main(PATH))
+    sys.exit(atdbf.main(PATH))
 

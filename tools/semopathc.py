@@ -3,11 +3,11 @@
 # SeMo-PATH:
 # https://esolangs.org/wiki/SeMo-PATH
 from typing import Tuple, List
-import mtdc
+import atdbf
 
 
-class SeMoPATH(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+class SeMoPATH(atdbf.Abstract2DBrainfuck):
+    # language definition
     NAME = "SeMo-PATH"
     HELP = "  -mem_width=N  select memory width\n"
     SYMS_START = ["$"]
@@ -43,5 +43,5 @@ class SeMoPATH(mtdc.Abstract2DBrainfuck):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(mtdc.main(SeMoPATH))
+    sys.exit(atdbf.main(SeMoPATH))
 

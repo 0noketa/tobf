@@ -1,9 +1,7 @@
-# Minimal-2D to 1D language compiler
-#
-# Minimal-2D:
-# https://esolangs.org/wiki/Minimal-2D
+
 from typing import Tuple, List, Dict, Callable
 import sys
+
 
 class CellInfo:
     def __init__(self, left: int = -1, right: int = -1, up: int = -1, down: int = -1) -> None:
@@ -390,35 +388,6 @@ class Abstract2DBrainfuck:
         return code
 
 
-class Minimal2D(Abstract2DBrainfuck):
-    # language definition
-    NAME = "Minimal-2D"
-    HELP = ""
-    SYMS_START = []
-    SYMS_EXIT = []
-    SYMS_TURN = list("LRUD")
-    SYMS_TURNNZ = []
-    SYMS_MIRROR_R_TO_U = []
-    SYMS_MIRROR_R_TO_D = []
-    SYMS_MIRROR_R_TO_L = []
-    SYMS_MIRROR_H = []
-    SYMS_MIRROR_V = []
-    SYMS_MIRRORNZ_R_TO_L = []
-    SYMS_BF_BRACKETS = []
-    SYMS_SKIP = []
-    SYMS_SKIPZ = ["/"]
-    SYMS_PTR_INC = [">"]
-    SYMS_PTR_DEC = ["<"]
-    SYMS_PTR_UP = []
-    SYMS_PTR_DOWN = []
-    SYMS_INC = ["+"]
-    SYMS_DEC = ["-"]
-    SYMS_PUT = ["."]
-    SYMS_GET = [","]
-    DEFAULT_MEM_WIDTH = -1
-
-    def __init__(self, source: str = None, argv: List[str] = []) -> None:
-        super().__init__(source, argv)
 
 
 class CompilerState:
@@ -1145,7 +1114,7 @@ class IntermediateToAsmbf(IntermediateCompiler):
         super().__init__(src, mem_size, extension)
 
     def compile(self) -> List[str]:
-        dst = ["mov r1, 0"]
+        dst = ["mov r2, 0"]
 
         labels = self.get_used_labels()
 
@@ -1154,37 +1123,37 @@ class IntermediateToAsmbf(IntermediateCompiler):
 
         for lbl, op, arg in self.src:
             if lbl != -1:
-                dst.append(f"@mtdc_{labels.index(lbl)}:")
+                dst.append(f"@atdbf_{labels.index(lbl)}:")
             
             if op == "jz":
-                dst.append("rcl r0, r1")
-                dst.append(f"jz r0, @mtdc_{labels.index(arg)}")
+                dst.append("rcl r1, r2")
+                dst.append(f"jz r1, @atdbf_{labels.index(arg)}")
             elif op == "jmp":
-                dst.append(f"jmp @mtdc_{labels.index(arg)}")
+                dst.append(f"jmp @atdbf_{labels.index(arg)}")
             elif op == "+":
-                dst.append(f"amp r1, {arg}")
+                dst.append(f"amp r2, {arg}")
             elif op == "-":
-                dst.append(f"smp r1, {arg}")
+                dst.append(f"smp r2, {arg}")
             elif op == ">":
-                dst.append(f"add r1, {arg}")
+                dst.append(f"add r2, {arg}")
             elif op == "<":
-                dst.append(f"sub r1, {arg}")
+                dst.append(f"sub r2, {arg}")
             elif op == ",":
-                dst.append("in r0")
-                dst.append("sto r1, r0")
+                dst.append("in r1")
+                dst.append("sto r2, r1")
             elif op == ".":
-                dst.append("rcl r0, r1")
-                dst.append("out r0")
+                dst.append("rcl r1, r2")
+                dst.append("out r1")
             elif op == "assign":
-                dst.append(f"mov r0, {arg}")
-                dst.append("sto r1, r0")
+                dst.append(f"mov r1, {arg}")
+                dst.append("sto r2, r1")
             elif op == "exit":
-                dst.append("jmp @mtdc_exit")
+                dst.append("jmp @atdbf_exit")
             elif self.is_extension(op):
                 stat = CompilerState(labels)
                 dst.extend(self.compile_extension(op, arg, stat))
 
-        dst.append("@mtdc_exit")
+        dst.append("@atdbf_exit")
 
         return dst
 
@@ -1801,7 +1770,7 @@ class IntermediateInterpreter(IntermediateCompiler):
         return []
 
 
-def main(loader=Minimal2D, extension: IntermediateExtension = None):
+def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
     import sys
     import io
 
@@ -1912,11 +1881,3 @@ if __name__ == "__main__":
 
     sys.exit(main())
 
-
-# if you can not write in Minimal-2D, write in Brainfuck.
-#
-# #include <stdio.h>
-# int c,d,i;void I(d){for(i=0;i++<d*3;)putchar(32);}int main(){puts("D");
-# while(!feof(stdin)){(c=getchar())-91||(I(d),puts("/"),I(d),puts("RR D")
-# ,++d||--d);c-93||(d&&d--,I(d),puts("DU/L"));c-43&&c-45&&c-62&&c-60&&c-
-# 44&&c-46||(I(d),printf("%c\n",c));}return puts("");}

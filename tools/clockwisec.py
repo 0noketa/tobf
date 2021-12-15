@@ -8,10 +8,10 @@
 # https://esolangs.org/wiki/Clockwise
 from typing import Dict, Tuple, List, Callable
 import sys
-import mtdc
+import atdbf
 
 
-def clockwise_push(stat: mtdc.LoaderState) -> mtdc.LoaderState:
+def clockwise_push(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     stat.code.append((stat.lbl, "clockwise_push", 0))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -19,7 +19,7 @@ def clockwise_push(stat: mtdc.LoaderState) -> mtdc.LoaderState:
 
     return stat
 
-def clockwise_pop(stat: mtdc.LoaderState) -> mtdc.LoaderState:
+def clockwise_pop(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     stat.code.append((stat.lbl, "clockwise_pop", 0))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -27,7 +27,7 @@ def clockwise_pop(stat: mtdc.LoaderState) -> mtdc.LoaderState:
 
     return stat
 
-def clockwise_clear(stat: mtdc.LoaderState) -> mtdc.LoaderState:
+def clockwise_clear(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     stat.code.append((stat.lbl, "clockwise_clear", 0))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -36,7 +36,7 @@ def clockwise_clear(stat: mtdc.LoaderState) -> mtdc.LoaderState:
     return stat
 
 
-class Clockwise(mtdc.Abstract2DBrainfuck):
+class Clockwise(atdbf.Abstract2DBrainfuck):
     # language definition
     NAME = "Clockwise"
     HELP = ""
@@ -74,7 +74,7 @@ class Clockwise(mtdc.Abstract2DBrainfuck):
     def __init__(self, source: str = None, argv: List[str] = []) -> None:
         super().__init__(source, argv)
 
-class IntermediateExtension(mtdc.IntermediateExtension):
+class IntermediateExtension(atdbf.IntermediateExtension):
     def __init__(self) -> None:
         super().__init__()
 
@@ -87,7 +87,7 @@ class IntermediateExtension(mtdc.IntermediateExtension):
     def can_compile_to(self, target_language: str) -> bool:
         return target_language in ["C", "disasm"]
 
-    def get_initializer(self, target_language: str, stat: mtdc.CompilerState) -> List[str]:
+    def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {
             "C": [
                 "#ifndef QUEUE_SIZE",
@@ -104,7 +104,7 @@ class IntermediateExtension(mtdc.IntermediateExtension):
         }
         return dst[target_language] if target_language in dst.keys() else []
 
-    def compile_instruction(self, target_language: str, op: str, arg: int, stat: mtdc.CompilerState):
+    def compile_instruction(self, target_language: str, op: str, arg: int, stat: atdbf.CompilerState):
         templates_all = {
             "C": {
                 "clockwise_pop": [
@@ -126,7 +126,7 @@ class IntermediateExtension(mtdc.IntermediateExtension):
     def can_invoke(self) -> bool:
         return True
 
-    def initialize(self, stat: mtdc.InterpreterState) -> mtdc.InterpreterState:
+    def initialize(self, stat: atdbf.InterpreterState) -> atdbf.InterpreterState:
         self.iqueue = []
         self.eof = False
         self.ibuf = 0
@@ -137,7 +137,7 @@ class IntermediateExtension(mtdc.IntermediateExtension):
 
         return stat
 
-    def invoke_instruction(self, name: str, arg: int, stat: mtdc.InterpreterState) -> int:
+    def invoke_instruction(self, name: str, arg: int, stat: atdbf.InterpreterState) -> int:
         if name == "clockwise_pop":
             if self.iidx == -1:
                 if not self.eof:
@@ -170,5 +170,5 @@ class IntermediateExtension(mtdc.IntermediateExtension):
         return stat
 
 if __name__ == "__main__":
-    sys.exit(mtdc.main(Clockwise, IntermediateExtension()))
+    sys.exit(atdbf.main(Clockwise, IntermediateExtension()))
 

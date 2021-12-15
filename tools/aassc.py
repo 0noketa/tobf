@@ -3,10 +3,10 @@
 # Around and around, sleeping sound:
 # https://esolangs.org/wiki/Around_and_around,_sleeping_sound
 from typing import Tuple, List
-import mtdc
+import atdbf
 
 
-def aass_ptr_dec(stat: mtdc.LoaderState) -> mtdc.LoaderState:
+def aass_ptr_dec(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     stat.code.append((stat.lbl, "<", 1))
     stat.code.append((stat.lbl + 1, "+", 1))
     stat.lbl += 2
@@ -15,7 +15,7 @@ def aass_ptr_dec(stat: mtdc.LoaderState) -> mtdc.LoaderState:
 
     return stat
 
-class AroundAndAroundSleepingSound(mtdc.Abstract2DBrainfuck):
+class AroundAndAroundSleepingSound(atdbf.Abstract2DBrainfuck):
     # language definition
     NAME = "\"Around and around, sleeping sound\""
     HELP = ""
@@ -53,5 +53,5 @@ class AroundAndAroundSleepingSound(mtdc.Abstract2DBrainfuck):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(mtdc.main(AroundAndAroundSleepingSound))
+    sys.exit(atdbf.main(AroundAndAroundSleepingSound))
 

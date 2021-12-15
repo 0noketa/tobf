@@ -6,10 +6,10 @@
 # Brainfuck output uses 8 cells start with Regimin's registers
 from typing import Dict, Tuple, List, Callable
 import sys
-import mtdc
+import atdbf
 
 
-def regimin_inc1(stat: mtdc.LoaderState):
+def regimin_inc1(stat: atdbf.LoaderState):
     stat.code.append((stat.lbl, "regimin_inc1", 1))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -17,7 +17,7 @@ def regimin_inc1(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_inc2(stat: mtdc.LoaderState):
+def regimin_inc2(stat: atdbf.LoaderState):
     stat.code.append((stat.lbl, "regimin_inc2", 1))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -25,7 +25,7 @@ def regimin_inc2(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_inc3(stat: mtdc.LoaderState):
+def regimin_inc3(stat: atdbf.LoaderState):
     stat.code.append((stat.lbl, "regimin_inc3", 1))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -33,7 +33,7 @@ def regimin_inc3(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_dec1(stat: mtdc.LoaderState):
+def regimin_dec1(stat: atdbf.LoaderState):
     stat.code.append((stat.lbl, "regimin_dec1", 1))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -41,7 +41,7 @@ def regimin_dec1(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_dec2(stat: mtdc.LoaderState):
+def regimin_dec2(stat: atdbf.LoaderState):
     stat.code.append((stat.lbl, "regimin_dec2", 1))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -49,7 +49,7 @@ def regimin_dec2(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_dec3(stat: mtdc.LoaderState):
+def regimin_dec3(stat: atdbf.LoaderState):
     stat.code.append((stat.lbl, "regimin_dec3", 1))
     stat.x += stat.dx
     stat.y += stat.dy
@@ -57,7 +57,7 @@ def regimin_dec3(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_skipz1(stat: mtdc.LoaderState):
+def regimin_skipz1(stat: atdbf.LoaderState):
     stat.stubs.append(len(stat.code))
     stat.stk.append((stat.x + stat.dx * 2, stat.y + stat.dy * 2, stat.dx, stat.dy))
 
@@ -68,7 +68,7 @@ def regimin_skipz1(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_skipz2(stat: mtdc.LoaderState):
+def regimin_skipz2(stat: atdbf.LoaderState):
     stat.stubs.append(len(stat.code))
     stat.stk.append((stat.x + stat.dx * 2, stat.y + stat.dy * 2, stat.dx, stat.dy))
 
@@ -79,7 +79,7 @@ def regimin_skipz2(stat: mtdc.LoaderState):
 
     return stat
 
-def regimin_skipz3(stat: mtdc.LoaderState):
+def regimin_skipz3(stat: atdbf.LoaderState):
     stat.stubs.append(len(stat.code))
     stat.stk.append((stat.x + stat.dx * 2, stat.y + stat.dy * 2, stat.dx, stat.dy))
 
@@ -92,7 +92,7 @@ def regimin_skipz3(stat: mtdc.LoaderState):
 
 
 
-class Regimin(mtdc.Abstract2DBrainfuck):
+class Regimin(atdbf.Abstract2DBrainfuck):
     # language definition
     NAME = "Regimin"
     HELP = ""
@@ -137,7 +137,7 @@ class Regimin(mtdc.Abstract2DBrainfuck):
         super().__init__(source, argv)
 
 
-class IntermediateExtension(mtdc.IntermediateExtension):
+class IntermediateExtension(atdbf.IntermediateExtension):
     def __init__(self) -> None:
         super().__init__()
 
@@ -172,7 +172,7 @@ class IntermediateExtension(mtdc.IntermediateExtension):
     def can_compile_to(self, target_language: str) -> bool:
         return target_language in ["C", "Brainfuck", "bf", "disasm"]
 
-    def get_initializer(self, target_language: str, stat: mtdc.CompilerState) -> List[str]:
+    def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {
             "C": [
                 # hide main and rename regimin_main with cc option (this instruction will be changed)
@@ -183,14 +183,14 @@ class IntermediateExtension(mtdc.IntermediateExtension):
         }
         return dst[target_language] if target_language in dst.keys() else []
 
-    def get_finalizer(self, target_language: str, stat: mtdc.CompilerState) -> List[str]:
+    def get_finalizer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {
             "C": [],
             "Brainfuck": []
         }
         return dst[target_language] if target_language in dst.keys() else []
 
-    def compile_instruction(self, target_language: str, op: str, arg: int, stat: mtdc.CompilerState):
+    def compile_instruction(self, target_language: str, op: str, arg: int, stat: atdbf.CompilerState):
         label = stat.labels.index(arg) if "jz" in op and arg in stat.labels else "invalid"
         get_bflabel = (lambda x: len(stat.labels) - stat.labels.index(x))
         at_first_cell = ">" * (self.n_registers() + self.n_hidden_registers())
@@ -271,21 +271,21 @@ class IntermediateExtension(mtdc.IntermediateExtension):
 
         return 0 if len(s) == 0 else int(s)
 
-    def initialize(self, stat: mtdc.InterpreterState) -> mtdc.InterpreterState:
+    def initialize(self, stat: atdbf.InterpreterState) -> atdbf.InterpreterState:
         self.reg1 = self.input("reg1:")
         self.reg2 = self.input("reg2:")
         self.reg3 = self.input("reg3:")
 
         return stat
 
-    def finalize(self, stat: mtdc.InterpreterState) -> mtdc.InterpreterState:
+    def finalize(self, stat: atdbf.InterpreterState) -> atdbf.InterpreterState:
         print(f"reg1: {self.reg1}")
         print(f"reg2: {self.reg2}")
         print(f"reg3: {self.reg3}")
 
         return stat
 
-    def invoke_instruction(self, name: str, arg: int, stat: mtdc.InterpreterState) -> mtdc.InterpreterState:
+    def invoke_instruction(self, name: str, arg: int, stat: atdbf.InterpreterState) -> atdbf.InterpreterState:
         if name == "regimin_inc1":
             self.reg1 = (self.reg1 + arg) & 0xFF
         elif name == "regimin_inc2":
@@ -313,5 +313,5 @@ class IntermediateExtension(mtdc.IntermediateExtension):
         return stat
 
 if __name__ == "__main__":
-    sys.exit(mtdc.main(Regimin, IntermediateExtension()))
+    sys.exit(atdbf.main(Regimin, IntermediateExtension()))
 
