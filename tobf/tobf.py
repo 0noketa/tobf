@@ -65,7 +65,7 @@
 #   similer to eq. breaks in_var
 # move in_var ...out_vars_with_sign
 #   in_var becomes to 0.
-#   if out_vars contains in_var, requires 1 tmp. 
+#   if out_vars contains in_var, requires 1 tmp.
 #   aliases_with_implicit_signs:
 #     moveadd in_var ...out_vars
 #     movesub in_var ...out_vars
@@ -160,6 +160,20 @@
 #   define macro. macro is avairable as $!name in args of !
 # bf src
 #   inline brainfuck.
+# bf_at var src
+#   inline brainfuck at selected address.
+#   ex:
+#       bf_at x [
+#       inc y
+#       bf_at x -]
+#     equals to:
+#       while x
+#       inc y
+#       dec x
+#       endwhile x
+# dup_bf n src
+#   inline brainfuck. code will repeat n(constant) times.
+# dup_bf_at var n src
 # include_bf file_name mem_size
 #   injects brainfuck code from file. included code should not leave changed pointer.
 #   can be used to include something such as output of very smart txt2bf.
@@ -597,7 +611,7 @@ class Tobf:
 
             if sign == old_sign:
                 sign = new_sign
-        
+
             r.append(sign + arg)
 
         return r
@@ -633,7 +647,7 @@ class Tobf:
 
         for out_addr in out_addrs:
             sign, out_addr = separate_sign(out_addr)
-            
+
             if in_addr == out_addr:
                 raise Exception(f"move from and to {in_addr}")
 
@@ -861,6 +875,25 @@ class Tobf:
 
             return True
 
+        if name == "bf_at":
+            addr = self.addressof(args[0])
+            self.put_at(addr, "".join(args[1:]))
+
+            return True
+
+        if name == "dup_bf":
+            n = self.valueof(args[0])
+            self.put("".join(args[1:]) * n)
+
+            return True
+
+        if name == "dup_bf_at":
+            addr = self.addressof(args[0])
+            n = self.valueof(args[1])
+            self.put_at(addr, "".join(args[2:]) * n)
+
+            return True
+
         # aliases
         if name in ["inc", "dec"]:
             sign = "+" if name == "inc" else "-"
@@ -1022,7 +1055,7 @@ class Tobf:
                     self.put_move(tmp2, [f"-#{tmp}"], as_bool=True)
                     self.put_clear(args[1:], ignore_signed=True)
                     self.put_move(tmp, self.sign_replaced_args(args[1:], "", "-"), append=False)
-    
+
             return True
 
         if name == "eq":
@@ -1301,7 +1334,7 @@ class Tobf:
             else:
                 # should not load vars without unload in block.
                 # should not (un)register workspaces in block.
-                # variables and tmps should be the same as at block head. 
+                # variables and tmps should be the same as at block head.
                 a_tmp = self.get_nearest_tmp(tmps, [a_left, a_right])
 
             self.put_at(a_left, "[-]+")
@@ -1460,7 +1493,7 @@ class Tobf:
                 tmps.append(tmp)
 
                 if abs(tmp - tmp2) > 1:
-                    tmp2 = -1 
+                    tmp2 = -1
             else:
                 tmp2 = -1
 
@@ -1582,7 +1615,7 @@ class Tobf:
 
         file_dir = self.find_dir(file)
         file = os.path.abspath(os.path.join(file_dir, file))
-        
+
         local_pfx = f"__tobf_local_{self.n_files}__"
 
         pub_vs = set([])
@@ -1607,7 +1640,7 @@ class Tobf:
                 continue
 
             cod = []
-            
+
             for tkn in split(line):
                 if tkn.startswith("local:"):
                     tkn = local_pfx + tkn[6:]

@@ -63,7 +63,7 @@ class Abstract2DBrainfuck:
     """abstract superset of some 2D Brainfuck that has not complex features"""
 
 
-    """language definition"""
+    # language definition
     NAME = "language name"
     HELP = ""
     SYMS_START = []
@@ -391,7 +391,7 @@ class Abstract2DBrainfuck:
 
 
 class Minimal2D(Abstract2DBrainfuck):
-    """language definition"""
+    # language definition
     NAME = "Minimal-2D"
     HELP = ""
     SYMS_START = []
@@ -453,7 +453,7 @@ class IntermediateExtension:
         return False
     def is_instruction_with_sideefect(self, name: str) -> bool:
         return False
-    def is_mageable_instruction(self, name: str) -> bool:
+    def is_mergeable_instruction(self, name: str) -> bool:
         return False
     def requires_initialization(self) -> bool:
         return False
@@ -564,12 +564,12 @@ class IntermediateCompiler:
 
         return False
 
-    def is_margeable_instruction(self, name: str) -> bool:
+    def is_mergeable_instruction(self, name: str) -> bool:
         if name in [">", "<", "+", "-"]:
             return True
 
         if self.ex is not None:
-            if self.ex.has_instruction(name) and self.ex.is_mageable_instruction(name):
+            if self.ex.has_instruction(name) and self.ex.is_mergeable_instruction(name):
                 return True
 
         return False
@@ -583,20 +583,17 @@ class IntermediateCompiler:
     def get_active_labels(self) -> List[int]:
         return sorted(list(set([lbl for lbl, op, arg in self.src if lbl != -1])))
 
-    def skip_mergeable(self, idx: int, labels: List[int] = None) -> Tuple[int, int]:
-        if labels is None:
-            labels = self.get_used_labels()
-
+    def skip_mergeable(self, idx: int) -> Tuple[int, int]:
         if idx not in range(len(self.src)):
             return (len(self.src), 0)
 
         lbl0, op0, arg0 = self.src[idx]
 
-        if not self.is_margeable_instruction(op0):
+        if not self.is_mergeable_instruction(op0):
             return (idx + 1, arg0)
 
         for i, (lbl, op, arg) in enumerate(self.src[idx + 1:]):
-            if op != op0 or lbl in labels:
+            if op != op0 or lbl != -1:
                 return (idx + 1 + i, arg0)
 
             arg0 += arg
@@ -604,18 +601,20 @@ class IntermediateCompiler:
         return (len(self.src), arg0)
 
     def merge_increment(self):
-        labels = self.get_used_labels()
+        old_size = len(self.src)
 
         i = 0
         while i < len(self.src):
             lbl, op, arg = self.src[i]
 
-            if self.is_margeable_instruction(op):
-                j, arg2 = self.skip_mergeable(i, labels) 
+            if self.is_mergeable_instruction(op):
+                j, arg2 = self.skip_mergeable(i) 
                 self.src[i] = (lbl, op, arg2)
                 self.src = self.src[:i + 1] + self.src[j:]
 
             i += 1
+
+        return len(self.src) != old_size
 
     def rename_label(self, from_: int, to_: int):
         x = len(self.src)
@@ -635,68 +634,118 @@ class IntermediateCompiler:
             else:
                 self.src[i] = (-1, op, arg)
 
+    def remove_nop(self) -> bool:
+        """takes labels from every nop and removes all nop\n
+           returns True if any nop was removed
+        """
+    
+        old_size = len(self.src)
+        i = old_size
+        while i > 0:
+            i -= 1
+            lbl, op, arg = self.src[i]
+
+            if lbl == -1:
+                if i > 0 and op != "":
+                    for j in range(i - 1, -1, -1):
+                        lbl2, op2, arg2 = self.src[j]
+
+                        if op2 != "":
+                            break
+
+                        if lbl2 != -1:
+                            self.src[i] = (lbl2, op, arg)
+                            self.src[j] = (-1, "", 0)
+                            break
+
+                if op == "":
+                    self.src.pop(i)
+
+        return old_size != len(self.src)
+
     def optimize(self):
+        self.optimize0()
+        self.update_labels()
+
+        if self.merge_increment():
+            self.update_labels()
+
+        if self.reduce_loops():
+            self.update_labels()
+
+        if self.remove_conditional_jump_by_const():
+            self.update_labels()
+
+            if type(self).NAME != "interpreter":
+                if self.remove_conditional_jump_by_const():
+                    self.update_labels()
+
+            if self.remove_nop():
+                self.update_labels()
+        
+        if type(self).NAME != "interpreter":
+            self.optimize0()
+            self.update_labels()
+
+            if self.merge_increment():
+                self.update_labels()
+
+            if self.remove_conditional_jump_by_const():
+                self.update_labels()
+
+            if self.remove_nop():
+                self.update_labels()
+
+            if self.reduce_loops():
+                self.update_labels()
+
+    def optimize0(self):
         optimized = True
         while optimized:
             optimized = False
 
             self.update_labels()
-            labels = self.get_used_labels()
-
-            i = 0
-            while i < len(self.src):
-                lbl, op, arg = self.src[i]
-
-                if op == "" and lbl not in labels:
-                    self.src.pop(i)
-                else:
-                    i += 1
+            if self.remove_nop():
+                self.update_labels()
 
             i = 1
             while i < len(self.src):
                 lbl0, op0, arg0 = self.src[i - 1]
                 lbl, op, arg = self.src[i]
 
-                if op0 == "" and lbl0 in labels and lbl not in labels:
-                    self.src[i] = (lbl0, op, arg)
+                if self.is_instruction_for_jump(op0) and arg0 == lbl and lbl0 == -1:
                     self.src.pop(i - 1)
                     optimized = True
 
                     continue
 
-                if self.is_instruction_for_jump(op0) and arg0 == lbl and lbl0 not in labels:
-                    self.src.pop(i - 1)
-                    optimized = True
-
-                    continue
-
-                if self.is_instruction_for_jump(op0) and arg0 == lbl and lbl0 in labels:
+                if self.is_instruction_for_jump(op0) and arg0 == lbl and lbl0 != -1:
                     self.rename_label(lbl0, lbl)
                     self.src.pop(i - 1)
                     optimized = True
 
                     continue
 
-                if self.is_instruction_for_jump(op0) and op == "jmp" and arg0 == arg and lbl0 not in labels:
+                if self.is_instruction_for_jump(op0) and op == "jmp" and arg0 == arg and lbl0 == -1:
                     self.src.pop(i - 1)
                     optimized = True
 
                     continue
 
-                if op0 in ["jmp", "exit"] and op == "jmp" and lbl in labels:
+                if op0 in ["jmp", "exit"] and op == "jmp" and lbl != -1:
                     self.rename_label(lbl, arg)
                     self.src.pop(i)
                     optimized = True
 
                     continue
 
-                if op0 in ["jmp", "exit"] and lbl not in labels:
+                if op0 in ["jmp", "exit"] and lbl == -1:
                     self.src.pop(i)
                     optimized = True
 
                     continue
 
-                if op0 == "" and lbl0 in labels and lbl in labels:
+                if op0 == "" and lbl0 != -1 and lbl != -1:
                     self.rename_label(lbl0, lbl)
                     self.src.pop(i - 1)
                     optimized = True
@@ -704,17 +753,17 @@ class IntermediateCompiler:
                     continue
 
                 if op0 == op and arg0 == arg and (op == "exit" or self.is_instruction_for_jump(op)):
-                    if lbl0 not in labels:
+                    if lbl0 == -1:
                         self.src.pop(i - 1)
                         optimized = True
 
                         continue
-                    elif lbl not in labels:
+                    elif lbl == -1:
                         self.src.pop(i)
                         optimized = True
 
                         continue
-                    elif lbl0 in labels and lbl in labels:
+                    elif lbl0 != -1 and lbl != -1:
                         self.rename_label(lbl, lbl0)
                         self.src.pop(i)
                         optimized = True
@@ -723,9 +772,13 @@ class IntermediateCompiler:
 
                 if (op0 != op
                         and (set([op0, op]) == set(["+", "-"])
-                                or set([op0, op]) == set(["+", "-"]))
-                        and lbl not in labels):
-                    self.src[i - 1] = (lbl0, "", 0)
+                                or set([op0, op]) == set([">", "<"]))):
+                    lbl2 = lbl0 if lbl == -1 else lbl
+                    op2 = (op if arg0 < arg
+                            else op0 if arg0 > arg
+                            else "")
+                    arg2 = abs(arg - arg0)
+                    self.src[i - 1] = (lbl2, op2, arg2)
                     self.src.pop(i)
                     optimized = True
 
@@ -739,12 +792,9 @@ class IntermediateCompiler:
 
                 i += 1
 
-        self.merge_increment()
-        self.update_labels()
-
-        self.reduce_loops()
-
     def reduce_loops(self):
+        old_size = len(self.src)
+
         i = 0
         while i < len(self.src):
             lbl, op, arg = self.src[i]
@@ -797,6 +847,72 @@ class IntermediateCompiler:
 
             i += 1
 
+        return len(self.src) != old_size
+
+    def remove_conditional_jump_by_const(self) -> bool:
+        optimized = False
+
+        for i, (lbl, op, arg) in enumerate(self.src):
+            # from:
+            #   jmp x
+            #   x: jmp y
+            #   y: jmp z
+            # to:
+            #   jmp z
+            #   x: jmp z
+            #   y: jmp z
+            if self.is_instruction_for_jump(op):
+                j = i
+                lbl2, op2, arg2 = self.src[i]
+                while self.src[arg2][1] == op:
+                    j = arg2
+
+                    lbl2, op2, arg2 = self.src[j]
+
+                self.src[i] = (lbl, op, arg2)
+
+                if i != j:
+                    optimized = True
+
+            # from:
+            #   jz x
+            #   jz y
+            #   jmp z
+            # to:
+            #   jz x
+            #   nop
+            #   jmp z
+            if self.is_instruction_for_jump(op) or op == "exit":
+                for j in range(i + 1, len(self.src)):
+                    lbl2, op2, arg2 = self.src[j]
+
+                    if op2 == op:
+                        if lbl2 != -1:
+                            if arg != arg2:
+                                break
+
+                            if lbl == -1:
+                                lbl = i
+                                self.src[i] = (lbl, op, arg)
+
+                            self.rename_label(lbl2, lbl)
+
+                        self.src[j] = (-1, "", 0)
+                        optimized = True
+                    else:
+                        break
+
+            if op in ["jmp", "exit"]:
+                for j in range(i + 1, len(self.src)):
+                    lbl2, op2, arg2 = self.src[j]
+
+                    if lbl2 == -1:
+                        self.src[j] = (-1, "", 0)
+                        optimized = True
+                    else:
+                        break
+
+        return optimized
 
 class IntermediateToText(IntermediateCompiler):
     NAME = "Abstract2DBrainfuck IL assembly"
@@ -1018,6 +1134,57 @@ class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
                 dst.extend(self.compile_extension(op, arg, stat))
 
         dst.append("Lexit:")
+
+        return dst
+
+
+class IntermediateToAsmbf(IntermediateCompiler):
+    NAME = "asmbf"
+
+    def __init__(self, src: List[Tuple[int, str, int]], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
+
+    def compile(self) -> List[str]:
+        dst = ["mov r1, 0"]
+
+        labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
+
+        for lbl, op, arg in self.src:
+            if lbl != -1:
+                dst.append(f"@mtdc_{labels.index(lbl)}:")
+            
+            if op == "jz":
+                dst.append("rcl r0, r1")
+                dst.append(f"jz r0, @mtdc_{labels.index(arg)}")
+            elif op == "jmp":
+                dst.append(f"jmp @mtdc_{labels.index(arg)}")
+            elif op == "+":
+                dst.append(f"amp r1, {arg}")
+            elif op == "-":
+                dst.append(f"smp r1, {arg}")
+            elif op == ">":
+                dst.append(f"add r1, {arg}")
+            elif op == "<":
+                dst.append(f"sub r1, {arg}")
+            elif op == ",":
+                dst.append("in r0")
+                dst.append("sto r1, r0")
+            elif op == ".":
+                dst.append("rcl r0, r1")
+                dst.append("out r0")
+            elif op == "assign":
+                dst.append(f"mov r0, {arg}")
+                dst.append("sto r1, r0")
+            elif op == "exit":
+                dst.append("jmp @mtdc_exit")
+            elif self.is_extension(op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(op, arg, stat))
+
+        dst.append("@mtdc_exit")
 
         return dst
 
@@ -1392,8 +1559,9 @@ class IntermediateToErp(IntermediateCompiler):
                 dst.append(f": .L{labels.index(lbl)}")
             
             if op == "jz":
-                dst.append(f"p @ '.Lif{branches} '.L{labels.index(arg)} if jmp")
-                dst.append(f": .Lif{branches}")
+                dst.append(f"p @ '.L{labels.index(arg)} jz")
+                # dst.append(f"p @ '.Lif{branches} '.L{labels.index(arg)} if jmp")
+                # dst.append(f": .Lif{branches}")
                 branches += 1
             elif op == "jmp":
                 dst.append(f"'.L{labels.index(arg)} jmp")
@@ -1433,7 +1601,7 @@ class IntermediateToBrainfuck(IntermediateCompiler):
 
     def compile(self) -> List[str]:
         # memory layout: next_label, n, current_label, m, 0, cell0, 1, cell1, 1, ..., 1, current_cell, 0, next_cell, 0, ...
-        # [[>+>+<<-]->[<+>-]>>+<-[0 -[1 -[2 [->[-]<]
+        # [[>+>+<<-]->[<+>-]>>+<-[0 -[1 -[2 [[-]>-<]
         # ]>[ label2 [-]]<
         # ]>[ label1 [-]]<
         # ]>[ label0 [-]]<
@@ -1459,19 +1627,26 @@ class IntermediateToBrainfuck(IntermediateCompiler):
             at_first_cell = "<[<<]" + "<" * n_registers
 
             if self.n_args > 0:
-                for i in range(self.n_args):
+                dst.append(">" * self.n_args)
+
+                for i in range(self.n_args - 1, -1, -1):
                     j = i * 2 + n_registers + 1
-                    dst.append("[" + ">" * j + "+" + "<" * j + "-]>")
-                dst.append("<" * self.n_args)
+                    dst.append("<[" + ">" * j + "+" + "<" * j + "-]")
 
         current_label = -1
         n_jumps = 0
 
-        get_bflabel = (lambda x: len(labels) - labels.index(x))
+        def get_bflabel_sel(from_, to_):
+            d = abs(from_ - to_)
+            if d > (len(labels) - to_) + 3:
+                return "[-]" + "+" * (len(labels) - to_)
+            else:
+                o = "-" if from_ < to_ else "+"
+                return o * d
 
         dst.extend([
             "+" * (len(labels) + 1),
-            "[[>+>+<<-]>[<+>-]<->>>+<" + "-[" * (len(labels) + 1) + "[->[-]<]",
+            "[[>+>+<<-]>[<+>-]<->>>+<" + "-[" * (len(labels) + 1) + "[[-]>-<]",
             "]>[<<< initial label",
             at_current_cell
         ])
@@ -1503,15 +1678,15 @@ class IntermediateToBrainfuck(IntermediateCompiler):
                 ])
                 dst.extend([
                     at_first_cell,
-                    ">[>[-]>[-]<<",
-                    "< [-]" + "+" * get_bflabel(arg) + " >-]>>[<<<" + f" jz {labels.index(arg)}",
+                    ">[>[-]>[-]<<"
+                    "< " + get_bflabel_sel(current_label + 1, labels.index(arg)) + " >-]>>[<<<" + f" jz {labels.index(arg)}",
                     at_current_cell
                 ])
                 n_jumps += 1
             elif op == "jmp":
                 dst.extend([
                     at_first_cell,
-                    "[-]" + "+" * get_bflabel(arg) + " >>[-]>[-][<<<" + f"jmp {labels.index(arg)}",
+                    get_bflabel_sel(current_label + 1, labels.index(arg)) + " >>[-]>[-][<<<" + f"jmp {labels.index(arg)}",
                     at_current_cell
                 ])
                 n_jumps += 1
@@ -1672,9 +1847,8 @@ target languages:
                 Generic 2D Brainfuck
   Enigma2D      Enigma-2D
   PATH          
+  asmbf         uses bflabels preprocessor
   BrainfuckAsmCompiler(bfasmcomp)
-                Hilmar Ackermann s compiler
-                that generates Brainfuck code from RISC-like high-level language with MASM-like syntax.
                 https://gitlab.com/hilmar-ackermann/brainfuckassembler
                 https://github.com/esovm/BrainfuckAsmCompiler
   x86           uses NASM. requires external runtime-library.
@@ -1704,6 +1878,7 @@ target languages:
         "PATH": IntermediateToPATH,
         "erp": IntermediateToErp,
         "x86": IntermediateToX86,
+        "asmbf": IntermediateToAsmbf,
         "BrainfuckAsmCompiler": IntermediateToBrainfuckAsmCompiler,
         "bfasmcomp": IntermediateToBrainfuckAsmCompiler,
         "CASL2": IntermediateToCASL2

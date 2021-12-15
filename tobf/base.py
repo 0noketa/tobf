@@ -126,17 +126,17 @@ class SubsystemBase:
 
         self._size = size
     def has_const(self, name: str) -> bool:
-        return name in self._consts.keys()
+        return name in self._consts
     def def_const(self, name: str, value:int) -> bool:
         if name.isdigit():
             return False
 
-        if not (name in self._consts):
+        if name not in self._consts:
             self._consts[name] = value
 
         return True
     def replace_const(self, name: str, value:int) -> bool:
-        if not (name in self._consts):
+        if name not in self._consts:
             return False
 
         self._consts[name] = value

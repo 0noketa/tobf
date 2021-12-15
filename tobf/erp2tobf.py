@@ -29,6 +29,8 @@ from __future__ import annotations
 #   return
 # jmp
 #   jump to poped address
+# jz ( cond addr -- )
+#   jump if cond is zero
 # call
 #   call poped address
 # putc ( char -- )
@@ -242,10 +244,10 @@ jumpless_words = [
 ]
 builtin_words = [
     ":", "{", "}", ";",
-    "jmp", "call", "if",
+    "jmp", "jz", "call", "if",
     "swap", "dup", "rot", "over", "drop",
     "2swap", "2dup", "2rot", "2over", "2drop",
-    "+", "-", "*", "/", "<", "=", "<>",
+    "+", "-", "*", "/", "<", ">", "=", "<>",
     "getc", "putc", "getInt", "putInt", ",", ".", "ln",
     "inc", "dec", "pInc", "pDec", "!", "@", "!b", "@b"
 ]
@@ -256,6 +258,9 @@ def is_local_label(name: str) -> bool:
 def is_call(src: List[str], name: str, i: int, vars: List[str] = None, arrays: List[str] = None) -> bool:
     vars = get_vars(src) if vars == None else vars
     arrays = get_arrays(src) if arrays == None else arrays
+
+    if name in ["var", "ary"]:
+        return False
 
     if name.startswith("'"):
         return False
@@ -332,16 +337,17 @@ def label(src: List[str], i: int, vars: List[str] = None, arrays: List[str] = No
     """returns last(in src[:i + 1]) label number.\n
        label numbers include labels for calls.
     """
-    r = 1
+    r = 0
     vars = get_vars(src) if vars == None else vars
     arrays = get_arrays(src) if arrays == None else arrays
     for i in range(i):
-        if src[i] in [":", "{", "}", ";", "jmp"]:
+        if src[i] in [":", "{", "}"]:
             r += 1
         elif is_call(src, src[i], i, vars, arrays):
             r += 1
 
     return r
+
 def word_label(src: List[str], name: str, i: int) -> int:
     """label number(in output) from label name(in source)
     """
@@ -484,7 +490,7 @@ def load(file: io.TextIOWrapper, loaded: List[str] = [], inc_dir: List[str] = []
 
     return src
 
-def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_func_prefix="erp_func_"):
+def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func_prefix="erp_func_"):
     optimize(src)
 
     has_main = main_exists(src)
@@ -515,6 +521,7 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
     dst = []
     lazy = []
     main_label = -1
+    last_label = label(src, len(src), vars, arrays)
     label_diff = 1
 
     if mem_size > max_mem_size or rstack_size > max_rstack_size or dstack_size > max_dstack_size:
@@ -614,11 +621,13 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
         elif tkn == ";":
             append_pop("x", "r")
             dst.append(f"erp:@goto move x")
-            dst.append(f"erp:@at {label(src, i)}")
         elif tkn == "jmp":
             append_pop("x")
             dst.append(f"erp:@goto move x")
-            dst.append(f"erp:@at {label(src, i)}")
+        elif tkn == "jz":
+            append_pop("x")
+            append_pop("y")
+            dst.append(f"erp:@goto_ifn y move x")
         elif tkn == "if":
             append_pop("z")
             append_pop("y")
@@ -719,7 +728,6 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
                         sys.stderr.write(f"tkn{i}: {tkn}\n")
                         sys.stderr.write(f"next:{label(src, i + 1)}:n")
                     dst.append(f"erp:@goto set {v}")
-                    dst.append(f"erp:@at {label(src, i + 1)}")
                     i += 1
                 else:
                     append_push_imm(f"{v}")
@@ -745,14 +753,14 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
 
         i += 1
 
-    dst.append(f"erp:@end {last_label}")
+    dst.append("erp:@end")
 
     head = [
         " ".join([f"_{v}" for v in vars]) + " x y z b e tmp0 tmp1",
         "tmp tmp0 tmp1",
         "loadas out code mod_print",
         # "loadas in code mod_input",
-        "loadas erp code mod_jump"
+        "loadas erp code mod_jump2"
     ]
 
     mem_loaders = [
@@ -775,7 +783,7 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
             head.append(f"{mem_name}:@w_move _{pointable_vars[i]} {i}")
             dst.append(f"{mem_name}:@r_move {i} _{pointable_vars[i]}")
 
-    head.append("erp:@begin 0")
+    head.append(f"erp:@begin {last_label + 1}")
 
     if main_label != -1:
         head.extend([
@@ -786,7 +794,7 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, last_label=255, anon_
 
     dst = head + dst
 
-    dst.append("end")
+    dst.append("end")            
 
     return dst
 
@@ -998,7 +1006,7 @@ if __name__ == "__main__":
     inc_dir = []
     dstack_size = 64
     rstack_size = 8
-    last_label = 255
+    bf16 = False
 
     for arg in sys.argv[1:]:
         if arg.startswith("-I"):
@@ -1011,9 +1019,9 @@ if __name__ == "__main__":
             rstack_size = int(arg[3:])
 
         if arg == "-bf8":
-            last_label = 255
+            bf16 = False
         if arg == "-bf16":
-            last_label = 65535
+            bf16 = True
 
         if arg in ["-help", "-?", "-h"]:
             print(f"python {sys.argv[0]} [options] < src > dst")
@@ -1028,7 +1036,7 @@ if __name__ == "__main__":
     code = compile(src,
             dstack_size=dstack_size,
             rstack_size=rstack_size,
-            last_label=last_label)
+            bf16=bf16)
 
     optimize_tobf(code)
 

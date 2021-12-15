@@ -94,6 +94,8 @@ class Instruction_RedefineConst(InstructionBase):
     def put(self, main: Tobf, args:list):
         v = main.valueof(args[0])
         for name in args[1:]:
+            if not self.sub_.has_const(name):
+                raise Exception(f"redef can not replace undefined constant")
             self.sub_.replace_const(name, v)
 
 class Instruction_AddConst(InstructionBase):

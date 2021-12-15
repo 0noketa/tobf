@@ -1,5 +1,9 @@
 # Clockwise to 1D language compiler
 #
+# implemented as:
+#   accumlator is 1 bit
+#   input queue can contain EOF
+#
 # Clockwise:
 # https://esolangs.org/wiki/Clockwise
 from typing import Dict, Tuple, List, Callable
@@ -33,7 +37,7 @@ def clockwise_clear(stat: mtdc.LoaderState) -> mtdc.LoaderState:
 
 
 class Clockwise(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+    # language definition
     NAME = "Clockwise"
     HELP = ""
     SYMS_START = []

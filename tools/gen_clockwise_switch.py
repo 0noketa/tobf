@@ -1,6 +1,7 @@
 
 # generates all branches for a byte with input loop
 
+import sys
 import math
 
 
@@ -13,22 +14,32 @@ def template(i):
     return s + list(" " * (template_w - len(s)))
 
 left_pad_w = 2
-
-
+# True when accumlator is not just 1 bit
+acc_is_multi_bit = len(sys.argv) > 1 and sys.argv[0] == "-wide_acc"
 
 
 # frame
 base_x = max(left_pad_w, 1)
 
-dst = [[" " for _ in range(147 + left_pad_w + template_w)] for _ in range(130)]
+w = 147 + left_pad_w + template_w
+if acc_is_multi_bit:
+    w += 7
+dst = [[" " for _ in range(w)] for _ in range(130)]
 
 
 
 for i in range(7):
     n = int(math.pow(2, i))
 
+    if acc_is_multi_bit:
+        for j in range(n):
+            dst[j][base_x] = "S"
+
+        base_x += 1
+
     for j in range(n):
         dst[j][base_x] = "."
+
     for j in range(n + 1):
         dst[n + j][base_x + j] = "R"
     for j in range(n):

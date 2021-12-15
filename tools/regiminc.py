@@ -93,7 +93,7 @@ def regimin_skipz3(stat: mtdc.LoaderState):
 
 
 class Regimin(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+    # language definition
     NAME = "Regimin"
     HELP = ""
     SYMS_START = []
@@ -163,7 +163,7 @@ class IntermediateExtension(mtdc.IntermediateExtension):
         return name in [
             "regimin_jz1", "regimin_jz2", "regimin_jz3"
         ]
-    def is_mageable_instruction(self, name: str) -> bool:
+    def is_mergeable_instruction(self, name: str) -> bool:
         return name in [
             "regimin_inc1", "regimin_inc2", "regimin_inc3",
             "regimin_dec1", "regimin_dec2", "regimin_dec3"

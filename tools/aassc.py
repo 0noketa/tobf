@@ -6,7 +6,7 @@ from typing import Tuple, List
 import mtdc
 
 
-def aadd_ptr_dec(stat: mtdc.LoaderState) -> mtdc.LoaderState:
+def aass_ptr_dec(stat: mtdc.LoaderState) -> mtdc.LoaderState:
     stat.code.append((stat.lbl, "<", 1))
     stat.code.append((stat.lbl + 1, "+", 1))
     stat.lbl += 2
@@ -16,7 +16,7 @@ def aadd_ptr_dec(stat: mtdc.LoaderState) -> mtdc.LoaderState:
     return stat
 
 class AroundAndAroundSleepingSound(mtdc.Abstract2DBrainfuck):
-    """language definition"""
+    # language definition
     NAME = "\"Around and around, sleeping sound\""
     HELP = ""
     SYMS_START = []
@@ -42,7 +42,7 @@ class AroundAndAroundSleepingSound(mtdc.Abstract2DBrainfuck):
     SYMS_PUT = ["Z"]
     SYMS_GET = []
     INS_TBL = {
-        "<": aadd_ptr_dec
+        "<": aass_ptr_dec
     }
     DEFAULT_MEM_WIDTH = -1
 
