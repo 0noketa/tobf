@@ -31,9 +31,10 @@ class Set2TobfInstruction:
     @classmethod
     def load(self, i: int, src: str):
         m: re.Match = re.match(
-                """(?:\[(v)(c)(v)\]\s+|)set\s+(v)\s+(?:(v)|\((v)(o)(v)\))"""
+                """(?:\[(v)(c)(v)\]\s+|)set\s+(vl)\s+(?:(v)|\((v)(o)(v)\))"""
                     .replace("c", """(?:/|=)""")
                     .replace("o", """(?:\+|\-)""")
+                    .replace("vl", """(?:[a-zA-Z]|!|\?)""")
                     .replace("v", """(?:[a-zA-Z]|\d+|!|\?)"""),
                 src)
 
@@ -42,17 +43,19 @@ class Set2TobfInstruction:
 
         c0, co, c1,  a0,  a1,  a2, o, a3 = m.groups()
 
-        # check args
-        if (a0 is None or (a2 is None) != (a3 is None) or (a2 is None) != (a3 is None)):
-            return None
-
-        # check cond
-        if (c0 is None) != (c1 is None) or (c0 is None) != (co is None):
-            return None
-
-        if a1 is None:
-            a1 = a2
-            a2 = a3
+        if o is not None:
+            if a2.isdigit() and a3.isdigit():
+                if o == "+":
+                    a1 = str(int(a2) + int(a3))
+                else:
+                    a1 = str(int(a2) - int(a3))
+                
+                o = None
+                a2 = None
+                a3 = None
+            else:
+                a1 = a2
+                a2 = a3
 
         return Set2TobfInstruction(i, [a0, a1, a2, c0, c1], co, o)
 
@@ -172,7 +175,7 @@ class Set2Tobf:
 
         dst.extend([
             " ".join(vars_) + " _",
-            "public " + " ".join(vars_0),
+            "public " + " ".join(vars_),
         ])
        
         if "?" in used:
@@ -287,7 +290,7 @@ class Set2Tobf:
 
                 if step.args[0] == "!" and not step.has_op():
                     if step.args[0] != step.args[1]:
-                        dst.extend(self.compile_store(step.args[1], step.args[0]))
+                        dst.extend(self.compile_store(self.esc(step.args[1]), step.args[0]))
                 else:
                     if step.args[0] != step.args[1]:
                         dst.extend(self.compile_load(left, self.esc(step.args[1])))

@@ -12,7 +12,7 @@ import atdbf
 
 
 def clockwise_push(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append((stat.lbl, "clockwise_push", 0))
+    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "clockwise_push", 0, 0))
     stat.x += stat.dx
     stat.y += stat.dy
     stat.lbl += 1
@@ -20,7 +20,7 @@ def clockwise_push(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     return stat
 
 def clockwise_pop(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append((stat.lbl, "clockwise_pop", 0))
+    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "clockwise_pop", 0, 0))
     stat.x += stat.dx
     stat.y += stat.dy
     stat.lbl += 1
@@ -28,7 +28,7 @@ def clockwise_pop(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     return stat
 
 def clockwise_clear(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append((stat.lbl, "clockwise_clear", 0))
+    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "clockwise_clear", 0, 0))
     stat.x += stat.dx
     stat.y += stat.dy
     stat.lbl += 1
@@ -104,7 +104,7 @@ class IntermediateExtension(atdbf.IntermediateExtension):
         }
         return dst[target_language] if target_language in dst.keys() else []
 
-    def compile_instruction(self, target_language: str, op: str, arg: int, stat: atdbf.CompilerState):
+    def compile_instruction(self, target_language: str, ins: atdbf.IntermediateInstruction, stat: atdbf.CompilerState):
         templates_all = {
             "C": {
                 "clockwise_pop": [
@@ -121,7 +121,7 @@ class IntermediateExtension(atdbf.IntermediateExtension):
 
         templates = templates_all[target_language] if target_language in templates_all.keys() else {}
 
-        return templates[op] if op in templates.keys() else []
+        return templates[ins.op] if ins.op in templates.keys() else []
 
     def can_invoke(self) -> bool:
         return True
@@ -137,8 +137,8 @@ class IntermediateExtension(atdbf.IntermediateExtension):
 
         return stat
 
-    def invoke_instruction(self, name: str, arg: int, stat: atdbf.InterpreterState) -> int:
-        if name == "clockwise_pop":
+    def invoke_instruction(self, ins: atdbf.IntermediateInstruction, stat: atdbf.InterpreterState) -> int:
+        if ins.op == "clockwise_pop":
             if self.iidx == -1:
                 if not self.eof:
                     s = sys.stdin.read(1)
@@ -154,7 +154,7 @@ class IntermediateExtension(atdbf.IntermediateExtension):
 
             stat.data[stat.ptr] = ((self.ibuf >> self.iidx) & 1)
             self.iidx -= 1
-        elif name == "clockwise_push":
+        elif ins.op == "clockwise_push":
             self.obuf = ((self.obuf << 1) | (stat.data[stat.ptr] & 1)) & 0x7F
             self.oidx += 1
 
@@ -162,7 +162,7 @@ class IntermediateExtension(atdbf.IntermediateExtension):
                 sys.stdout.write(chr(self.obuf))
                 self.oidx = 0
                 self.obuf = 0
-        elif name == "clockwise_clear":
+        elif ins.op == "clockwise_clear":
             stat.data[stat.ptr] = 0
 
         stat.ip += 1

@@ -7,8 +7,8 @@ import atdbf
 
 
 def aass_ptr_dec(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append((stat.lbl, "<", 1))
-    stat.code.append((stat.lbl + 1, "+", 1))
+    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "<", 0, 1))
+    stat.code.append(atdbf.IntermediateInstruction(stat.lbl + 1, "+", 0, 1))
     stat.lbl += 2
     stat.x += stat.dx
     stat.y += stat.dy
