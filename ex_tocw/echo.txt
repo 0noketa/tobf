@@ -1,0 +1,38 @@
+# echo until EOF. expects Clockwise implementation to not ignore EOF.
+start/1:
+    0: 0 b1; >stat1b
+    1: 1 b1; >stat1
+
+# EOF?
+stat1/1:
+    0: 0 b1; >stat2b
+    1: 1 b1; >stat2
+stat2/1:
+    0: 0 b1; >stat3b
+    1: 1 b1; >stat3
+stat3/1:
+    0: 0 b1; >stat4b
+    1: 1 b1; >stat4
+stat4/1:
+    0: 0 b1; >stat5b
+    1: 1 b1; >stat5
+stat5/1:
+    0: 0 b1; >stat6b
+    1: 1 b1; >stat6
+stat6/1:
+    0: 0 b1; >start
+    1: ; exit
+
+# is not EOF
+stat1b/1:
+    0-1: $ b1; >stat2b
+stat2b/1:
+    0-1: $ b1; >stat3b
+stat3b/1:
+    0-1: $ b1; >stat4b
+stat4b/1:
+    0-1: $ b1; >stat5b
+stat5b/1:
+    0-1: $ b1; >stat6b
+stat6b/1:
+    0-1: $ b1; >start

@@ -1,0 +1,12 @@
+# CompressedFuck decoder
+# this decoder is simple infnite loop.
+# Clockwise implementation should stop program at EOF.
+start/3:
+    0b000: '+' b7; continue
+    0b001: '-' b7; continue
+    0b010: '>' b7; continue
+    0b011: '<' b7; continue
+    0b100: '.' b7; continue
+    0b101: ',' b7; continue
+    0b110: '[' b7; continue
+    0b111: ']' b7; continue

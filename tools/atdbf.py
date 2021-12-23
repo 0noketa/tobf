@@ -912,6 +912,53 @@ class IntermediateCompiler:
                     else:
                         break
 
+        j = -1
+        vi = -1
+        v = -1
+        for i, ins in enumerate(self.src):
+            if ins.op == "assign":
+                j = i
+                vi = ins.arg0
+                v = ins.arg1
+            else:
+                if j != -1 and vi == ins.arg0 and ins.lbl == -1:
+                    if ins.op == "jz":
+                        if v == 0:
+                            ins.op = "jmp"
+                            ins.arg0 = 0
+                        else:
+                            self.src[i] = IntermediateInstruction(-1, "", 0, 0)
+
+                        optimized = True                       
+                        continue
+                    if ins.op == "assign":
+                        v = ins.arg1
+                        self.src[j].arg1 = ins.arg1
+                        self.src[i] = IntermediateInstruction(-1, "", 0, 0)
+
+                        optimized = True                         
+                        continue
+                    if ins.op == "+":
+                        v += ins.arg1
+                        self.src[j].arg1 += ins.arg1
+                        self.src[i] = IntermediateInstruction(-1, "", 0, 0)
+                        
+                        optimized = True 
+                        continue
+                    if ins.op == "-":
+                        v -= ins.arg1
+                        self.src[j].arg1 -= ins.arg1
+                        self.src[i] = IntermediateInstruction(-1, "", 0, 0)
+                        
+                        optimized = True 
+                        continue
+
+                if j != -1:
+                    j = -1
+                    vi = -1
+                    v = -1
+
+
         return optimized
 
 class IntermediateToText(IntermediateCompiler):
@@ -969,12 +1016,20 @@ static uint8_t data[DATA_SIZE], *p = data;
 #endif
 """.split("\n"))
 
+        labels = self.get_used_labels()
+        stat = CompilerState(labels)
+        initializer = self.get_extension_initializer(stat)
+
+        if None in initializer:
+            sep_idx = initializer.index(None)
+
+            dst.extend(initializer[:sep_idx])
+
+            initializer = initializer[sep_idx + 1:]
+
         dst.append("int main(int argc, char *argv[]) {")
 
-        labels = self.get_used_labels()
-
-        stat = CompilerState(labels)
-        dst.extend(self.get_extension_initializer(stat))
+        dst.extend(initializer)
 
         for i in self.src:
             if i.lbl != -1:

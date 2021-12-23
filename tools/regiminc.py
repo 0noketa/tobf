@@ -129,8 +129,18 @@ class IntermediateExtension(atdbf.IntermediateExtension):
     def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {
             "C": [
-                # hide main and rename regimin_main with cc option (this instruction will be changed)
-                "return 0;}",
+                "#include <stdlib.h>",
+                "int regimin_main (uint8_t *reg1, uint8_t *reg2, uint8_t *reg3);",
+                None,
+                'if (argc > 1) r0 = itoa(argv[1]);',
+                'if (argc > 2) r1 = itoa(argv[2]);',
+                'if (argc > 3) r2 = itoa(argv[3]);',
+                "if (regimin_main(&r0, &r1, &r2) == 1) return 1;",
+                'printf("%d\\n", (int)r0);',
+                'printf("%d\\n", (int)r1);',
+                'printf("%d\\n", (int)r2);',
+                "return 0;",
+                "}",
                 "int regimin_main (uint8_t *reg1, uint8_t *reg2, uint8_t *reg3) {",
                 "if (reg1) r0 = *reg1;",
                 "if (reg2) r1 = *reg2;",

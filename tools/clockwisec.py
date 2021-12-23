@@ -1,7 +1,7 @@
 # Clockwise to 1D language compiler
 #
 # implemented as:
-#   accumlator is 1 bit
+#   accumlator is unsigned (affects to nothing)
 #   input queue can contain EOF
 #
 # Clockwise:
@@ -28,7 +28,7 @@ def clockwise_pop(stat: atdbf.LoaderState) -> atdbf.LoaderState:
     return stat
 
 def clockwise_clear(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "clockwise_clear", 0, 0))
+    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "assign", 0, 0))
     stat.x += stat.dx
     stat.y += stat.dy
     stat.lbl += 1
@@ -78,11 +78,19 @@ class IntermediateExtension(atdbf.IntermediateExtension):
     def __init__(self) -> None:
         super().__init__()
 
+    def is_register_based(self) -> bool:
+        return True
+
+    def n_registers(self) -> int:
+        return 1
+    def n_hidden_registers(self) -> int:
+        return 0
+
     def requires_initialization(self) -> bool:
         return True
 
     def has_instruction(self, name: str) -> bool:
-        return name in ["clockwise_push", "clockwise_pop", "clockwise_clear"]
+        return name in ["clockwise_push", "clockwise_pop"]
 
     def can_compile_to(self, target_language: str) -> bool:
         return target_language in ["C", "disasm"]
@@ -95,11 +103,22 @@ class IntermediateExtension(atdbf.IntermediateExtension):
                 "#endif",
                 "uint8_t q[QUEUE_SIZE];",
                 "int qi = 0, qz = 0;",
-                "int ii = 6, oi = 0;",
+                "int ii = 0, oi = 0, ie = 0;",
                 "uint8_t obuf = 0;",
-                "#define clockwise_pop  if (feof(stdin)) { *p = ((q[qi] >> ii) & 1); if (ii == 0) { qi = (qi + 1) % qz; ii = 6; } else { --ii; } } "
-                "else { if (ii == 6 && qz == 0) { q[qz] = getchar(); *p = ((q[qz - 1] >> ii) & 1); if (qz < QUEUE_SIZE) ++qz; }  if (ii == 0) { q[qz++] = getchar(); ii = 6; } else { --ii; }}",
-                "#define clockwise_push obuf = (obuf << 1) | (*p & 1); if (++oi == 7) { putchar(obuf); obuf = 0; oi = 0; }"
+                "void clockwise_pop() {",
+                "#ifndef EXIT_ON_EOF",
+                "  if (ie) { r0 = ((q[qi] >> --ii) & 1); if (ii == 0) { qi = (qi + 1) % qz; ii = 7; } } else ",
+                "#endif",
+                "  { if (ii == 0) { if (qz < QUEUE_SIZE) ++qz; if (feof(stdin)) {",
+                "#ifdef EXIT_ON_EOF",
+                "      return 0;",
+                "#else",
+                "      q[qz - 1] = 0xFF; ie = 1;",
+                "#endif",
+                "    } else q[qz - 1] = getchar(); ii = 7; } r0 = ((q[qz - 1] >> --ii) & 1) | (r0 & (~0 ^ 1)); }",
+                "}",
+                "void clockwise_push() { obuf = (obuf << 1) | (r0 & 1); if (++oi == 7) { putchar(obuf); obuf = 0; oi = 0; } }",
+                None
             ]
         }
         return dst[target_language] if target_language in dst.keys() else []
@@ -108,13 +127,10 @@ class IntermediateExtension(atdbf.IntermediateExtension):
         templates_all = {
             "C": {
                 "clockwise_pop": [
-                    "clockwise_pop"
+                    "clockwise_pop();"
                 ],
                 "clockwise_push": [
-                    "clockwise_push"
-                ],
-                "clockwise_clear": [
-                    "*p = 0;"
+                    "clockwise_push();"
                 ]
             }
         }
@@ -162,8 +178,6 @@ class IntermediateExtension(atdbf.IntermediateExtension):
                 sys.stdout.write(chr(self.obuf))
                 self.oidx = 0
                 self.obuf = 0
-        elif ins.op == "clockwise_clear":
-            stat.data[stat.ptr] = 0
 
         stat.ip += 1
 
