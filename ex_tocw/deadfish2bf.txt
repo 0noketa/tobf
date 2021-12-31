@@ -1,0 +1,14 @@
+# Deadfish2Brainfuck
+# uses 4 cells
+start/2:
+    0b11: ;>dfcmd
+    _: ;>stat1
+default/5:
+    _: ;>start
+stat1/5:
+dfcmd/5:
+    0b01001: '+' b7 ;>start
+    0b00100: '-' b7 ;>start
+    0b10011: 0 "[>+>>+<<<-]>>>[<<[<+>>+<-]>[<+>-]>-]<<[-]<" s7 ;>start
+    0b01111: '.' b7 ;>start
+    0b11111: ;exit

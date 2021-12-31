@@ -47,11 +47,13 @@ class IntermediateInstruction:
 
 class LoaderState:
     def __init__(self,
+            source: List[str],
             code: List[IntermediateInstruction],
             lbl: int, x: int, y: int, dx: int, dy: int, 
             stubs: List[int], 
             stk: List[Tuple[int, int, int, int]]
             ) -> None:
+        self.source = source
         self.code = code
         self.lbl = lbl
         self.x = x
@@ -61,8 +63,8 @@ class LoaderState:
         self.stubs = stubs
         self.stk = stk
 
-    def get(self) -> Tuple[List[IntermediateInstruction], int, int, int, int, int]:
-        return (self.code, self.lbl, self.x, self.y, self.dx, self.dy, self.stubs, self.stk)
+    def get(self) -> Tuple[List[IntermediateInstruction], int, int, int, int, int, int]:
+        return (self.source, self.code, self.lbl, self.x, self.y, self.dx, self.dy, self.stubs, self.stk)
 
 class Abstract2DBrainfuck:
     """abstract superset of some 2D Brainfuck that has not complex features"""
@@ -381,8 +383,8 @@ class Abstract2DBrainfuck:
                 dx = -dx
                 dy = -dy
             elif c in cls.INS_TBL.keys():
-                stat = cls.INS_TBL[c](LoaderState(code, lbl, x, y, dx, dy, stubs, stk))
-                code, lbl, x, y, dx, dy, stubs, stk = stat.get()
+                stat = cls.INS_TBL[c](LoaderState(self.source, code, lbl, x, y, dx, dy, stubs, stk))
+                _, code, lbl, x, y, dx, dy, stubs, stk = stat.get()
 
                 continue
             else:

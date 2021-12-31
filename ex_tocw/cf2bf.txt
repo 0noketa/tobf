@@ -1,6 +1,8 @@
 # CompressedFuck decoder
 # this decoder is simple infnite loop.
-# Clockwise implementation should stop program at EOF.
+# Clockwise implementation should:
+#   stop program at EOF
+#   not trim MSBs from 8-bit input bytes
 start/3:
     0b000: '+' b7; continue
     0b001: '-' b7; continue
