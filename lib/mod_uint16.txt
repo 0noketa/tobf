@@ -1,4 +1,9 @@
-y0_lo n m o
+
+:init n
+    is_val n
+    loadas .vs vars n
+:clean
+    unload .vs
 
 :@check v
     is_var v:hi v:lo
@@ -22,55 +27,159 @@ y0_lo n m o
 
 :@if v
     @check v
+    .vs:push cond
     if v:hi
-        if v:lo
-:@endif v
+        inc .vs:cond
+    endif
+    if v:lo
+        inc .vs:cond
+    endif
+    if .vs:cond
+:@endif *
+    endif .vs:cond
+    .vs:pop cond
+
+:@ifelse v
     @check v
-        endif v:lo
-    endif v:hi
+
+    .vs:push cond cond2
+    if v:hi
+        inc .vs:cond
+    endif
+    if v:lo
+        inc .vs:cond
+    endif
+    ifelse .vs:cond .vs:cond2
+:@else *
+    else .vs:cond .vs:cond2
+:@endifelse *
+    endifelse .vs:cond .vs:cond2
+    .vs:pop cond cond2
+
+:@_push _move v
+    @check v
+
+    .vs:push hi lo
+    _move v:hi .vs:hi
+    _move v:lo .vs:lo
+:@push v
+    @push move v
+:@copypush v
+    @push copy v
+:@pop v
+    @check v
+
+    move .vs:hi v:hi
+    move .vs:lo v:lo
+    .vs:pop hi lo
 
 :@while v
     @check v
-    copyadd v:hi n m
-    ifelse m o
-    else m o
-        copyadd v:lo n
-    endifelse m o
-    while n
-        clear n
+
+    .vs:push cond3
+    @copypush v
+    @if v
+        inc .vs:cond3
+    @endif
+    @pop v
+    while .vs:cond3
+        clear .vs:cond3
 :@endwhile v
     @check v
-        copyadd v:hi n m
-        ifelse m o
-        else m o
-            copyadd v:lo n
-        endifelse m o
-    endwhile n
 
-:_moveadd16 _f _g  _if _endif  x y
+        .vs:push cond3
+        @copypush v
+        @if v
+            inc .vs:cond3
+        @endif
+        @pop v
+    endwhile .vs:cond3
+
+    .vs:pop cond3
+
+:_inc _g  _if _endif  x
+    @check x
+
+    .vs:push lo
+    copyadd y:lo .vs:lo
+    _f x:lo y:lo
+
+    _inc2 _f  _if _endif  x
+
+:_inc2 _f  _if _endif  x
+    .vs:push n m o
+    copyadd x:lo .vs:n
+    copyadd .vs:lo .vs:m
+    _if .vs:n .vs:m .vs:o
+        _f x:hi
+    _endif .vs:n .vs:m .vs:o
+
+    clear .vs:lo
+    .vs:pop n m o lo
+
+:@inc x
+    _inc inc  iflt endiflt  x
+:@dec x
+    _dec dec  ifgt endifgt  x
+
+
+:_moveadd _f _g  _if _endif  x y
     @check x
     @check y
-    copyadd y:lo y0_lo
+
+    .vs:push lo
+    copyadd y:lo .vs:lo
     _f x:lo y:lo
     _f x:hi y:hi
 
-    copyadd y:lo n
-    copyadd y0_lo m
-    _if n m o
-        _g y:hi
-    _endif n m o
-
-    clear y0_lo
+    _inc2 _g  _if _endif  y
 
 :@moveadd x y
-    _moveadd16 moveadd inc  iflt endiflt  x y
+    _moveadd moveadd inc  iflt endiflt  x y
 :@copyadd x y
-    _moveadd16 copyadd inc  iflt endiflt  x y
+    _moveadd copyadd inc  iflt endiflt  x y
 
 :@movesub x y
-    _moveadd16 movesub dec  ifgt endifgt  x y
+    _moveadd movesub dec  ifgt endifgt  x y
 :@copysub x y
-    _moveadd16 copysub dec  ifgt endifgt  x y
+    _moveadd copysub dec  ifgt endifgt  x y
 
+:@writehexzwith out v
+    @check v
+    .vs:push n m o
+    copy v:hi .vs:n
+    copy v:lo .vs:m
+
+    set 2 .vs:o
+    while .vs:o
+        out:writehexz .vs:n
+        move .vs:m .vs:n
+        dec .vs:o
+    endwhile .vs:o
+
+    .vs:pop n m o
+
+:@writehexwith out v
+    @check v
+
+    .vs:push n m
+
+    copy v:hi .vs:n
+    ifelse .vs:n .vs:m
+        out:writehex v:hi
+        out:writehexz v:lo
+    else .vs:n .vs:m
+        out:writehex v:lo
+    endifelse .vs:n .vs:m
+
+    .vs:pop n m
+
+:@writelnhexzwith out v
+    @writehexzwith out v
+    print 10
+
+:@writelnhexwith out v
+    @writehexwith out v
+    print 10
 
 end

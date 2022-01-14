@@ -110,7 +110,7 @@ class Set2Tobf:
 
     def esc(self, v):
         if v == "?":
-            return "local:lbls:next_label"
+            return ".lbls:next_label"
         elif v == "!":
             return "input"
         else:
@@ -122,7 +122,7 @@ class Set2Tobf:
         if val == "!":
             dst.append(f"input {add}{v}")
         elif val == "?":
-            dst.append(f"copy local:lbls:next_label {add}{v}")
+            dst.append(f"copy .lbls:next_label {add}{v}")
         elif val in Set2TobfInstruction.VARS or val.startswith("_"):
             dst.append(f"copy {val} {add}{v}")
         else:
@@ -184,12 +184,12 @@ class Set2Tobf:
                 "tmp _",
                 "init_vars",
                 "init_chars",
-                "loadas local:lbls code mod_jump2",
+                "loadas .lbls code mod_jump2",
                 ":clean",
-                "tmp -_",
                 "clean_vars",
                 "clean_chars",
-                "unload local:lbls"
+                "tmp -_",
+                "unload .lbls"
             ])
         else:
             dst.extend([
@@ -237,11 +237,11 @@ class Set2Tobf:
         ])
 
         if "?" in used:
-            dst.append(f"local:lbls:@begin {len(self.code)}")
+            dst.append(f".lbls:@begin {len(self.code)}")
 
         for i, step in enumerate(self.code):
             if "?" in used:
-                dst.append(f"local:lbls:@at {i}")
+                dst.append(f".lbls:@at {i}")
 
             if step.is_nop():
                 continue
@@ -268,11 +268,11 @@ class Set2Tobf:
                     dst.extend(self.compile_load("_y", step.args[4], "-"))
 
                     if step.co == "/":
-                        dst.append(f"local:lbls:@goto_if _y {set_label}")
+                        dst.append(f".lbls:@goto_if _y {set_label}")
                     else:
-                        dst.append(f"local:lbls:@goto_ifn _y {set_label}")
+                        dst.append(f".lbls:@goto_ifn _y {set_label}")
                 else:
-                    dst.append(f"local:lbls:@goto {set_label}")
+                    dst.append(f".lbls:@goto {set_label}")
             else:
                 if step.has_cond():
                     dst.extend(self.compile_load("_y", step.args[3]))
@@ -309,7 +309,7 @@ class Set2Tobf:
                     dst.append(f"endif _y")
 
         if "?" in used:
-            dst.append(f"local:lbls:@end")
+            dst.append(f".lbls:@end")
 
         dst.append(f"end")
 

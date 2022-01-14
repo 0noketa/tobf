@@ -40,6 +40,8 @@
 # @pop ...out_vars
 #   removes last values. and stores to out_vars
 #   keyword "print" can be included in args. they prints poped value instead of assignment.
+# @pop_as_set _ ...out_vars
+#   same as @pop. compatible to [move]
 # @dup
 # @dup imm_element_size
 # @dup imm_element_size imm_n_times
@@ -147,10 +149,11 @@ class Subsystem_Stk(SubsystemBase):
                 "init", "clean",
                 "@clear", "@empty",
                 "@pop", "@dup", "@swap", "@rot", "@over", "@add", "@sub", "@inc", "@dec",
+                "@pop_as_set",
                 "@calc"]
             or len(args) > 0
                 and name in [
-                    "@push", "@copypush", "@pop",
+                    "@push", "@copypush", "@pop", "@pop_as_set",
                     "@juggle"]
             or super().has_ins(name, args))
 
@@ -340,17 +343,23 @@ class Subsystem_Stk(SubsystemBase):
         # self._main.put("<" + ("<<" * m) + "<[" + (">>" * n) + "+" + ("<<" * n) + "-]" + (">>[<<+>>-]" * n))
 
         self._main.put(
-            # 2rot
-            # 1 2  3 4  5 6 *x y
+            # 2rot (c=2, n=3)
+            # 2rot: A 1  a 1  B 1  b 1  C 1  c 1 *0 0
             ("<<" * c * n)
-            #*1 2  3 4  5 6  x y
-            # 1*2  3 4  5 6  x y
+            # 2rot:*A 1  a 1  B 1  b 1  C 1  c 1  0 0
             + ("[" + (">>" * c * n) + "+" + ("<<" * c * n) + "-]" + ">>") * c
-            # 1 2 *3 4  5 6  x y
-            # 1 2  3*4  5 6  x y
-            + ((("[" + ("<<" * c) + "+" + (">>" * c) + "-]" + (">>" * c)) * n) + ("<<" * (c * n - 1))) * c
-            # 1 2  3*4  5 6  x y
-            )
+            # 2rot: 0 1  0 1 *B 1  b 1  C 1  c 1  A 0  a 0  0 0
+            + ((("[" + ("<<" * c) + "+" + (">>" * c) + "-]" + (">>" * c)) * n)
+            # 2rot: B 1  0 1  C 1  b 1  A 1  c 1  0 0  a 0 *0 0       [0]
+            # 2rot: B 1  b 1  C 1  c 1  A 1  a 1  0 0  0 0  0 0 *0 0  [2]
+                + ("<<" * (c * n - 1))
+            # 2rot: B 1  0 1  C 1 *b 1  A 1  c 1  0 0  a 0  0 0       [1]
+            # 2rot: B 1  b 1  C 1  c 1 *A 1  a 1  0 0  0 0  0 0  0 0  [3]
+                ) * c
+            # 2rot: B 1  b 1  C 1  c 1 *A 1  a 1  0 0  0 0  0 0  0 0
+            + ">" * c * (n - 2) * 2
+            # 2rot: B 1  b 1  C 1  c 1  A 1  a 1 *0 0  0 0  0 0  0 0
+        )
 
         if last:
             self.put_juggling_end()
@@ -514,9 +523,7 @@ class Subsystem_Stk(SubsystemBase):
                 first = i == 0
                 last = i + 1 == len(args)
 
-                if arg in ["0dup", "0swap", "0rot", "0drop"]:
-                    pass
-                elif arg == "swap":
+                if arg == "swap":
                     self.put_juggling_rot(2, 1, first=first, last=last)
                 elif arg[1:] == "swap" and arg[0].isdigit():
                     self.put_juggling_rot(2, int(arg[0]), first=first, last=last)
@@ -528,6 +535,8 @@ class Subsystem_Stk(SubsystemBase):
                     self.put_juggling_rot(3, 1, first=first, last=last)
                 elif arg[1:] == "rot" and arg[0].isdigit():
                     self.put_juggling_rot(3, int(arg[0]), first=first, last=last)
+                elif arg[1:4] == "rot" and arg[0].isdigit() and arg[4].isdigit():
+                    self.put_juggling_rot(int(arg[4]), int(arg[0]), first=first, last=last)
                 elif arg == "drop":
                     self.put_juggling_pop(None, first=first, last=last)
                 elif arg == "over":
@@ -565,6 +574,10 @@ class Subsystem_Stk(SubsystemBase):
                 self.put_juggling_push(arg, i == 0, i + 1 == len(args), tmps=tmps)
 
             return
+
+        if name == "@pop_as_set":
+            name = "@pop"
+            args = args[1:]
 
         if name == "@pop":
             if len(args) == 0:

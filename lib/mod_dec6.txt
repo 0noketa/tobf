@@ -49,22 +49,47 @@ n m o z
     move v:e v:d
     move v:f v:e
     clear v:f
+:@rol v
+    move v:f n
+    @shl v
+    moveadd n v:a
+:@ror v
+    move v:a n
+    @shr v
+    moveadd n v:f
+
 :@r_copylowest v out
     @check v
     is_var out
-    copy v:d out
+    copy v:a out
 :@r_movelowest v out
     @check v
     is_var out
-    move v:d out
+    move v:a out
 :@w_copylowest in v
     @check v
     is_var in
-    copy in v:d
+    copy in v:a
 :@w_movelowest in v
     @check v
     is_var in
-    move in v:d
+    move in v:a
+:@r_copyhighest v out
+    @check v
+    is_var out
+    copy v:f out
+:@r_movehighest v out
+    @check v
+    is_var out
+    move v:f out
+:@w_copyhighest in v
+    @check v
+    is_var in
+    copy in v:f
+:@w_movehighest in v
+    @check v
+    is_var in
+    move in v:f
 
 :@clear v
     @set 0 0 0 0 0 0 v
@@ -214,12 +239,6 @@ n m o z
     input x:f x:e x:d x:c x:b x:a
     _copysub6 z x:f x:e x:d x:c x:b x:a
 
-:@write0 x
-    @check x
-    _copyadd6 z x:f x:e x:d x:c x:b x:a
-    print x:f x:e x:d x:c x:b x:a
-    _copysub6 z x:f x:e x:d x:c x:b x:a
-
 :@read_until tail x
     @check x
     @clear x
@@ -242,69 +261,48 @@ n m o z
 :@readln x
     @read_until 10 x
 
+:@write0 x
+    @check x
+    move z n x:f x:e x:d x:c x:b x:a
+    print x:f x:e x:d x:c x:b x:a
+    move n +z -x:f -x:e -x:d -x:c -x:b -x:a
+:@writez x
+    @write0 x
+
 :@writeln0 x
     @write0 x
     set 10 n
     print n
     clear n
-
-:_write_n
-    _copyadd z n
-    print n
-:_write1 x
-    _copy x n
-    _write_n
+:@writezln x
+    @writeln0 x
 
 :@write x
     @check x
-    _copy x:f n
-    ifelse n m
-        _write_n
-        _write1 x:e
-        _write1 x:d
-        _write1 x:c
-        _write1 x:b
-    else n m
-        _@write_1 x
-    endifelse n m
 
-    _copy x:a n
-    _write_n
-
-    clear n
-
-:_@write_1 x
-    _copy x:e n
-    ifelse n m
-        _write_n
-        _write1 x:d
-        _write1 x:c
-        _write1 x:b
-    else n m
-        _@write_2 x
-    endifelse n m
-
-:_@write_2 x
-    _copy x:d n
-    ifelse n m
-        _write_n
-        _write1 x:c
-        _write1 x:b
-    else n m
-        _@write_3 x
-    endifelse n m
-
-:_@write_3 x
-    _copy x:c n
-    ifelse n m
-        _write_n
-        _write1 x:b
-    else n m
-        _copy x:b n
+    set 6 m
+    while m
+        @r_copyhighest x n
         if n
-            _write_n
+            inc o
         endif n
-    endifelse n m
+
+        if o
+            move o n
+
+            @r_copyhighest x o
+            copyadd z o
+            print o
+            clear o
+        endif o
+        move n o
+
+        # uses n
+        @rol x
+
+        dec m
+    endwhile m
+    clear o
 
 :@writeln x
     @write x

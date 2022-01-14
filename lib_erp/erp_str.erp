@@ -1,0 +1,54 @@
+
+: strlen ( addr -- int )
+    0 swap ( -- result addr )
+
+	'.L2 jmp
+: .L1
+    inc swap inc swap
+: .L2
+    dup @b
+    '.L1 { drop } if jmp
+
+: strcpy ( dst src -- )
+	'.L2 jmp
+: .L1
+    inc swap inc
+: .L2
+    dup @b ( dst src -- dst src c )
+    rot dup ( -- src c dst dst )
+    rot dup rot ( -- src dst c c dst )
+    !b ( -- src dst c )
+
+    '.L1 jnz
+
+    drop drop
+    ;
+: strcat ( dst src -- )
+    swap
+    '.L2 jmp
+: .L1
+    inc
+: .L2
+    dup @b
+    '.L1 jnz
+    
+    swap 'strcpy jmp
+    ;
+
+: streq ( s0 s1 -- bool )
+	'.L2 jmp
+: .L1
+    inc swap inc
+: .L2
+    dup . 32 putc swap dup . ln swap
+
+    dup @b rot ( s0 s1 -- s1 c1 s0 )
+    dup @b rot ( s1 c1 s0 -- s1 s0 c0 c1 )
+    dup rot = ( s1 s0 c0 c1 -- s1 s0 c1 c0=c1 )
+
+( 0 1 2 -- 1 2 0 -- 1 2 0 0 -- 1 0 0 2 )
+
+    { drop drop drop 0 } jz
+
+    '.L1 { drop drop 1 } if jmp
+

@@ -39,6 +39,12 @@
 #     does not clear
 #   vars:def ...names
 #     defines names bound to memory addresses. they works as variable.
+#   vars:push ...names
+#     defines names bound to memory addresses.
+#     if name was defined already, hides old addresses into stack.
+#   vars:pop ...names
+#     restores old addresses hidden by [push].
+#     if no one was pushed, undefines names.
 #   vars:set ...imms ...varss
 #     imms: should have same number of values as variables.
 #     varss: list of vars
@@ -53,7 +59,7 @@
 #   vars:copy ...varss
 #   vars:copyadd ...varss
 #   vars:copysub ...varss
-#     similer to main instruction. "this" as source.
+#     similar to main instruction. "this" as source.
 
 
 from typing import cast, Union, List, Tuple, Set, Dict, Callable
@@ -98,19 +104,32 @@ class Instruction_RedefineConst(InstructionBase):
                 raise Exception(f"redef can not replace undefined constant")
             self.sub_.replace_const(name, v)
 
-class Instruction_AddConst(InstructionBase):
-    def __init__(self, name, sub: SubsystemBase, subtract=False):
+class Instruction_ModifyConst(InstructionBase):
+    def __init__(self, name, sub: SubsystemBase, op="+"):
         super().__init__(name, _least_argc=2)
         self.sub_ = sub
-        self.subtract_ = subtract
+        self.op_ = op
     def put(self, main: Tobf, args:list):
         v = main.valueof(args[0])
 
-        if self.subtract_:
-            v = -v
-
         for name in args[1:]:
-            self.sub_.replace_const(name, self.sub_.valueof(name) + v)
+            dst = self.sub_.valueof(name)
+            if self.op_ == "+":
+                dst = dst + v
+            elif self.op_ == "-":
+                dst = dst - v
+            elif self.op_ == "*":
+                dst = dst * v
+            elif self.op_ == "/":
+                dst = dst // v if v != 0 else 0
+            elif self.op_ == "%":
+                dst = dst % v if v != 0 else 0
+            elif self.op_ == "lt":
+                dst = 1 if dst < v else 0
+            elif self.op_ == "eq":
+                dst = 1 if dst == v else 0
+
+            self.sub_.replace_const(name, dst)
 
 class Instruction_DefineEnum(InstructionBase):
     def __init__(self, name, sub: SubsystemBase):
@@ -127,6 +146,22 @@ class Instruction_DefineVar(InstructionBase):
     def put(self, main: Tobf, args:list):
         for name in args:
             self.sub_.def_var(name)
+
+class Instruction_PushVar(InstructionBase):
+    def __init__(self, name, sub: SubsystemBase):
+        super().__init__(name, _least_argc=0)
+        self.sub_ = sub
+    def put(self, main: Tobf, args:list):
+        for name in args:
+            self.sub_.def_var(name, stack=True)
+
+class Instruction_PopVar(InstructionBase):
+    def __init__(self, name, sub: SubsystemBase):
+        super().__init__(name, _least_argc=0)
+        self.sub_ = sub
+    def put(self, main: Tobf, args:list):
+        for name in args:
+            self.sub_.pop_var(name)
 
 class Instruction_Init(InstructionBase):
     def __init__(self, name, sub: SubsystemBase, _least_argc=0):
@@ -173,8 +208,13 @@ class Subsystem_Consts(SubsystemBase):
         self.add_ins(Instruction_DefineConst("def", self))
         self.add_ins(Instruction_IncrementConst("inc", self))
         self.add_ins(Instruction_IncrementConst("dec", self, decrement=True))
-        self.add_ins(Instruction_AddConst("add", self))
-        self.add_ins(Instruction_AddConst("sub", self, subtract=True))
+        self.add_ins(Instruction_ModifyConst("add", self, op="+"))
+        self.add_ins(Instruction_ModifyConst("sub", self, op="-"))
+        self.add_ins(Instruction_ModifyConst("mul", self, op="*"))
+        self.add_ins(Instruction_ModifyConst("div", self, op="/"))
+        self.add_ins(Instruction_ModifyConst("mod", self, op="%"))
+        self.add_ins(Instruction_ModifyConst("lt", self, op="lt"))
+        self.add_ins(Instruction_ModifyConst("eq", self, op="eq"))
         self.add_ins(Instruction_RedefineConst("redef", self))
 
 class Subsystem_Enums(SubsystemBase):
@@ -206,6 +246,8 @@ class Subsystem_Vars(SubsystemBase):
 
         self.add_ins(Instruction_Clean("clean", self, 0))
         self.add_ins(Instruction_DefineVar("def", self))
+        self.add_ins(Instruction_PushVar("push", self))
+        self.add_ins(Instruction_PopVar("pop", self))
         self.add_ins(Instruction_Pass("set", self, 1))
         self.add_ins(Instruction_Pass("add", self, 1))
         self.add_ins(Instruction_Pass("sub", self, 1))
@@ -217,12 +259,6 @@ class Subsystem_Vars(SubsystemBase):
         self._main.put_at(self.offset(), ("[-]>" * self.size()) + ("<" * self.size()))
 
     def put(self, name: str, args: List[Union[int, str]], tmps: List[int]):
-        if name == "init":
-            return
-        if name == "clean":
-            self.put_clean(args)
-            return
-
         name0 = name
         sign = ""
 
@@ -255,7 +291,7 @@ class Subsystem_Vars(SubsystemBase):
             
             return
 
-        raise Exception(f"unknown instruction [vars:{name0}/{len(args)}] {self.name()}(vars):len={self.size()}")
+        super().put(name, args, tmps)
 
 
 class Subsystem_Code(SubsystemBase):

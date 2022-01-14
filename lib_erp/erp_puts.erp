@@ -1,0 +1,8 @@
+: puts ( s -- )
+    '.L2 jmp
+: .L1
+    putc
+    inc
+: .L2
+    dup @b dup
+    '.L1 { drop drop } if jmp

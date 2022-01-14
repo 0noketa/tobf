@@ -229,7 +229,7 @@ class Vliw:
 stack_on_registers = []  # ["x", "y", "z", "X", "Y", "Z"]
 named_cells_for_vliw = list(map(str, range(8)))  # ["x", "y", "z", "X", "Y", "Z"]
 micro_instructions = ["swap", "dup", "rot", "over", "2swap", "2dup", "2rot", "2over", "drop"]  # ["swap", "dup", "rot", "over", "drop", "+", "-"]
-min_vliw_size = 3
+min_vliw_size = 2
 max_mem_size = 256
 max_rstack_size = 0x100
 max_dstack_size = 0x10000
@@ -238,16 +238,16 @@ max_dstack_size = 0x10000
 jumpless_words = [
     "swap", "dup", "rot", "over", "drop",
     "2swap", "2dup", "2rot", "2over", "2drop",
-    "+", "-", "*", "/", "<", "=", "<>",
+    "+", "-", "*", "/", "mod", "<", ">", ">=", "<=", "=", "<>",
     "getc", "putc", "getInt", "putInt", ",", ".", "ln",
     "inc", "dec", "pInc", "pDec", "!", "@", "!b", "@b"
 ]
 builtin_words = [
     ":", "{", "}", ";",
-    "jmp", "jz", "call", "if",
+    "jmp", "jz", "jnz", "call", "if",
     "swap", "dup", "rot", "over", "drop",
     "2swap", "2dup", "2rot", "2over", "2drop",
-    "+", "-", "*", "/", "<", ">", "=", "<>",
+    "+", "-", "*", "/", "mod", "<", ">", ">=", "<=", "=", "<>",
     "getc", "putc", "getInt", "putInt", ",", ".", "ln",
     "inc", "dec", "pInc", "pDec", "!", "@", "!b", "@b"
 ]
@@ -262,7 +262,7 @@ def is_call(src: List[str], name: str, i: int, vars: List[str] = None, arrays: L
     if name in ["var", "ary"]:
         return False
 
-    if name.startswith("'"):
+    if name.startswith("'") or  name.startswith('"'):
         return False
 
     if name.startswith("="):
@@ -287,6 +287,26 @@ def is_call(src: List[str], name: str, i: int, vars: List[str] = None, arrays: L
         return False
 
     return True
+
+def is_str(tkn: str) -> bool:
+    return len(tkn) >= 2 and tkn.startswith('"') and tkn.endswith('"')
+def get_strs(src: List[str]) -> List[str]:
+    return list(sorted(set([s[1:-1] for s in src if is_str(s)])))
+def get_strs_size(src: List[str]) -> int:
+    ss = get_strs(src)
+    return sum(map(len, ss)) + len(ss)
+def get_strs_base(src: List[str]) -> int:
+    return len(get_pointable_vars(src)) + get_array_size(src)
+def get_str_pos(src: List[str], idx: int) -> int:
+    ss = get_strs(src)
+    tkn = src[idx][1:-1]
+
+    if tkn not in ss:
+        return -1
+
+    i = ss.index(tkn)
+
+    return get_strs_base(src) + sum(map(len, ss[:i])) + i
 
 def get_vars(src: List[str]) -> List[str]:
     r = []
@@ -331,7 +351,7 @@ def get_array_pos(src: List[str], name: str) -> int:
 def get_mem_size(src: List[str]) -> int:
     pointable_vars = get_pointable_vars(src)
     
-    return len(pointable_vars) + get_array_size(src)
+    return len(pointable_vars) + get_array_size(src) + get_strs_size(src)
 
 def label(src: List[str], i: int, vars: List[str] = None, arrays: List[str] = None) -> int:
     """returns last(in src[:i + 1]) label number.\n
@@ -440,11 +460,38 @@ def remove_anonymous_functions(src: List[str], dst: List[List[str]], prefix: str
 
     return src
 
+def replace_alias(s):
+    tbl = {
+        "eq": "=",
+        "neq": "<>",
+    }
+
+    return tbl[s] if s in tbl else s
+
+def tokens(src: str):
+    src = src.strip()
+    while len(src):
+        if src[0] == '"':
+            if '"' in src[1:]:
+                i = src.index('"', 1) + 1
+            else:
+                i = len(src)
+
+            yield src[:i]
+
+            src = src[i:].strip()
+        else:
+            ss = src.split(maxsplit=1)
+
+            yield ss[0].strip()
+
+            src = ss[1].strip() if len(ss) > 1 else ""
+
 def load(file: io.TextIOWrapper, loaded: List[str] = [], inc_dir: List[str] = []) -> List[str]:
     s = file.read()
     inc_dir = inc_dir + ["."]
 
-    src = list(filter(len, s.split()))
+    src = list(map(replace_alias, tokens(s)))
 
     # comment
     i = 0
@@ -513,6 +560,7 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
 
     vars = get_vars(src)
     pointable_vars = get_pointable_vars(src, vars)
+    strs = get_strs(src)
     arrays = get_arrays(src)
     mem_size = get_mem_size(src)
     rstack_name = "rstack"
@@ -578,13 +626,13 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
 
             if len(vliw.src) >= min_vliw_size or vliw.uses_tuple_jugglers:
                 def push_vliw():
-                    used = vliw.used()
+                    used = vliw.used() + 1
 
                     # rename register 
                     base = len(named_cells_for_vliw) - used
                     stack_layout = " ".join([str(int(vliw_dst) - base) for vliw_dst in vliw.stack[base:]])
 
-                    dst.append(f"{dstack_name}:@juggle {vliw.used()} {stack_layout}")
+                    dst.append(f"{dstack_name}:@juggle {used} {stack_layout}")
 
                 push_vliw()
                 i += len(vliw.src)
@@ -605,8 +653,7 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
             dst.append(f"erp:@at {label(src, i)}")
         elif tkn == "}":
             dst[lazy.pop()] = f"erp:@goto set {label(src, i)}"
-            append_pop("x", "r")
-            dst.append(f"erp:@goto move x")
+            dst.append(f"erp:@goto {rstack_name}:@pop_as_set 0")
             dst.append(f"erp:@at {label(src, i)}")
         elif tkn == ":":
             dst.append(f"# : {src[i + 1]}")
@@ -619,15 +666,17 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
         elif tkn == "ary":
             i += 2
         elif tkn == ";":
-            append_pop("x", "r")
-            dst.append(f"erp:@goto move x")
+            dst.append(f"erp:@goto {rstack_name}:@pop_as_set 0")
         elif tkn == "jmp":
-            append_pop("x")
-            dst.append(f"erp:@goto move x")
+            dst.append(f"erp:@goto {dstack_name}:@pop_as_set 0")
         elif tkn == "jz":
             append_pop("x")
             append_pop("y")
             dst.append(f"erp:@goto_ifn y move x")
+        elif tkn == "jnz":
+            append_pop("x")
+            append_pop("y")
+            dst.append(f"erp:@goto_if y move x")
         elif tkn == "if":
             append_pop("z")
             append_pop("y")
@@ -663,9 +712,8 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
             dst.append(f"set 10 x")
             dst.append(f"print x")
         elif tkn == "call":
-            append_pop("x")
             append_push_imm(label(src, i), "r")
-            dst.append(f"erp:@goto move x")
+            dst.append(f"erp:@goto {dstack_name}:@pop_as_set 0")
             dst.append(f"erp:@at {label(src, i)}")
         elif tkn in ["inc", "dec", "pInc", "pDec"]:
             # sizeof(uintptr_t) == 1
@@ -704,7 +752,49 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
             dst.append(f"copyadd y z")
             dst.append(f"dec x")
             dst.append(f"endwhile x")
+            dst.append(f"clear y")
             append_push("z")
+        elif tkn == "/":
+            append_pop("y")
+            append_pop("x")
+            dst.append(f"clear z")
+            dst.append(f"if y")
+            dst.append(f"while x")
+            dst.append(f"  copy y e")
+            dst.append(f"  while e")
+            dst.append(f"    copy x b")
+            dst.append(f"    if b")
+            dst.append(f"      dec x")
+            dst.append(f"    endif b")
+            dst.append(f"    dec e")
+            dst.append(f"  endwhile e")
+            dst.append(f"  inc z")
+            dst.append(f"endwhile x")
+            dst.append(f"endif y")
+            dst.append(f"clear x")
+            append_push("z")
+        elif tkn == "mod":
+            append_pop("y")
+            append_pop("x")
+            dst.append(f"tmp -tmp0")
+            dst.append(f"if y")
+            dst.append(f"while x")
+            dst.append(f"  copy y e")
+            dst.append(f"  while e")
+            dst.append(f"    copy x b")
+            dst.append(f"    ifelse b z")
+            dst.append(f"      dec x e")
+            dst.append(f"    else b z")
+            dst.append(f"      moveadd y tmp0")
+            dst.append(f"      movesub e tmp0")
+            dst.append(f"      clear y x e")
+            dst.append(f"    endifelse b z")
+            dst.append(f"  endwhile e")
+            dst.append(f"endwhile x")
+            dst.append(f"endif y")
+            dst.append(f"clear x")
+            append_push("tmp0")
+            dst.append(f"tmp tmp0")
         elif tkn.startswith("=") and (tkn[1:] in vars):
  
             if tkn[1:] in pointable_vars:
@@ -712,6 +802,8 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
                 dst.append(f"{mem_name}:@w_move x {pointable_vars.index(tkn[1:])}")
             else:
                 append_pop(f"_{tkn[1:]}")
+        elif tkn.startswith('"'):
+            append_push_imm(get_str_pos(src, i))
         elif tkn.startswith("'") and tkn.endswith("'") and len(tkn) == 3:
             append_push_imm(ord(tkn[1]))
         elif tkn.startswith("'"):
@@ -782,6 +874,15 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
         for i in range(len(pointable_vars)):
             head.append(f"{mem_name}:@w_move _{pointable_vars[i]} {i}")
             dst.append(f"{mem_name}:@r_move {i} _{pointable_vars[i]}")
+
+    if len(strs) > 0:
+        p = get_strs_base(src)
+        for s in strs:
+            for c in s:
+                head.append(f"{mem_name}:@set {ord(c)} {p}")
+                p += 1
+            p += 1
+
 
     head.append(f"erp:@begin {last_label + 1}")
 

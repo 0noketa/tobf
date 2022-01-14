@@ -1,0 +1,74 @@
+
+# compile_time stack that becomes to anonymouse variables
+
+:init d
+    is_val d
+
+    loadas .vs vars d
+:clean
+    unload .vs
+
+
+:@push_imm c
+    is_val c
+
+    .vs:push x
+    set c .vs:x
+:@push v
+    is_var v
+
+    .vs:push x
+    move v .vs:x
+:@copypush v
+    is_var v
+
+    .vs:push x
+    copy v .vs:x
+:@dup
+    .vs:push y
+    moveadd .vs:x .vs:y
+    .vs:push x
+    moveadd .vs:y .vs:x
+    .vs:pop y
+:@swap
+    .vs:push y z
+
+    moveadd .vs:x .vs:y
+    .vs:pop x
+    moveadd .vs:x .vs:z
+
+    moveadd .vs:y .vs:x
+    .vs:push x
+    moveadd .vs:z .vs:x
+
+    .vs:pop y z
+:@over
+    .vs:push y
+    .vs:push z
+
+    moveadd .vs:x .vs:y
+    .vs:pop x
+
+    copy .vs:x .vs:z
+
+    .vs:push x
+    moveadd .vs:y .vs:x
+    .vs:pop y
+
+    .vs:push x
+    moveadd .vs:z .vs:x
+    .vs:pop z
+:@pop v
+    is_var v
+
+    move .vs:x v
+    .vs:pop x
+:@drop
+    clear .vs:x
+    .vs:pop x
+
+# pretends to be compatible with set move copy
+:@pop_as_set _dummy v 
+    @pop v
+
+end

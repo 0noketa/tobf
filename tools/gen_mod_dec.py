@@ -67,6 +67,15 @@ print(shr("""
 
 print(f"""
     clear v:col{n_cols - 1}
+:@rol v
+    move v:col{n_cols - 1} n
+    @shl v
+    moveadd n v:col0
+:@ror v
+    move v:col0 n
+    @shr v
+    moveadd n v:col{n_cols - 1}
+
 :@r_copylowest v out
     @check v
     is_var out
@@ -83,6 +92,22 @@ print(f"""
     @check v
     is_var in
     move in v:col0
+:@r_copyhighest v out
+    @check v
+    is_var out
+    copy v:col{n_cols - 1} out
+:@r_movehighest v out
+    @check v
+    is_var out
+    move v:col{n_cols - 1} out
+:@w_copyhighest in v
+    @check v
+    is_var in
+    copy in v:col{n_cols - 1}
+:@w_movehighest in v
+    @check v
+    is_var in
+    move in v:col{n_cols - 1}
 
 :@clear v
     @set{" 0" * n_cols} v
@@ -232,61 +257,32 @@ print(f"""
     print n
     clear n
 
-:_write_n
-    _copyadd z n
-    print n
-:_write1 x
-    _copy x n
-    _write_n
-
 :@write x
     @check x
-    _copy x:col{n_cols - 1} n
-    ifelse n m
-        _write_n
-""")
 
-for i in range(n_cols - 2, 0, -1):
-    print(f"        _write1 x:col{i}")
-
-print("""    else n m
-        _@write_0 x
-    endifelse n m
-
-    _copy x:col0 n
-    _write_n
-
-    clear n
-""")
-
-for i in range(0, n_cols - 4):
-    print(f"""
-:_@write_{i} x
-    _copy x:col{n_cols - 2 - i} n
-    ifelse n m
-        _write_n
-""")
-
-    for j in range(n_cols - 3 - i, 0, -1):
-        print(f"        _write1 x:col{j}")
-
-    print(f"""    else n m
-        _@write_{i + 1} x
-    endifelse n m
-    """)
-
-print(f"""
-:_@write_{max(0, n_cols - 4)} x
-    _copy x:col2 n
-    ifelse n m
-        _write_n
-        _write1 x:col1
-    else n m
-        _copy x:col1 n
+    set {n_cols} m
+    while m
+        @r_copyhighest x n
         if n
-            _write_n
+            inc o
         endif n
-    endifelse n m
+
+        if o
+            move o n
+
+            @r_copyhighest x o
+            copyadd z o
+            print o
+            clear o
+        endif o
+        move n o
+
+        # uses n
+        @rol x
+
+        dec m
+    endwhile m
+    clear o
 
 :@writeln x
     @write x

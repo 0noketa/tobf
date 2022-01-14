@@ -40,6 +40,14 @@ n m e z
     move v:b v:a
     move v:c v:b
     clear v:c
+:@rol v
+    move v:c n
+    shl v
+    move n v:a
+:@ror v
+    move v:a n
+    shr v
+    move n v:a
 :@r_copylowest v out
     @check v
     is_var out
@@ -56,6 +64,22 @@ n m e z
     @check v
     is_var in
     move in v:a
+:@r_copyhighest v out
+    @check v
+    is_var out
+    copy v:c out
+:@r_movehighest v out
+    @check v
+    is_var out
+    move v:c out
+:@w_copyhighest in v
+    @check v
+    is_var in
+    copy in v:c
+:@w_movehighest in v
+    @check v
+    is_var in
+    move in v:c
 
 :@clear v
     @set 0 0 0 v

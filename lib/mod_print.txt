@@ -86,5 +86,66 @@ a x b y c z e n m
     writeint arg
     print n
 
+:writehex1 arg
+    copy arg n
+    set 16 a
+    while a
+        dec a
+        inc z
+        set 16 b
+        while b
+            dec b
+            ifelse n e
+                move n m
+                dec m
+            else n e
+                set 15 x y
+                movesub a x
+                movesub b y
+                clear z
+            endifelse n e
+            move m n
+        endwhile b
+    endwhile a
+
+:writehex2 v
+    move v a b
+
+    inc z
+    ifnotin b 0 1 2 3 4 5 6 7 8 9
+        add 55 a
+        dec z
+    endifnotin b 0 1 2 3 4 5 6 7 8 9
+    if z
+        add 48 a
+    endif z
+
+    print a
+    clear a
+
+:writehex arg
+    writehex1 arg
+    if x
+        writehex2 x
+    endif x
+    writehex2 y
+
+:writehexz arg
+    writehex1 arg
+    set 2 c
+    while c
+        writehex2 x
+        move y x
+        dec c
+    endwhile c
+
+:writelnhex arg
+    writehex arg
+    newline
+:writelnhexz arg
+    writehexz arg
+    newline
+
+
 end
 

@@ -5,21 +5,21 @@ next_label n current_label m
 #   when jumping happens  @goto and @goto_if disables following code until @at or @end
 
 :init
-    loadas local:cs consts
-    local:cs:def 0  LABELS JUMPS STUB X
+    loadas .cs consts
+    .cs:def 0  LABELS JUMPS STUB X
 
 # N: number of labels
 :@begin N
     is_val N
 
-    local:cs:redef N LABELS
-    local:cs:add 1 LABELS
+    .cs:redef N LABELS
+    .cs:add 1 LABELS
 
-    local:cs:redef 0 JUMPS STUB
+    .cs:redef 0 JUMPS STUB
 
-    dup_bf_at next_label  local:cs:LABELS  +
+    dup_bf_at next_label  .cs:LABELS  +
     bf_at next_label  [[>+>+<<-]->[<+>-]>>+<
-    dup_bf_at next_label  local:cs:LABELS  -[
+    dup_bf_at next_label  .cs:LABELS  -[
     bf_at next_label  [[-]>-<]
     bf_at next_label  ]>[ <<<
 
@@ -28,34 +28,34 @@ next_label n current_label m
     is_val N
 
     bf_at next_label  >>> [-]
-    dup_bf_at next_label  local:cs:JUMPS  ]
+    dup_bf_at next_label  .cs:JUMPS  ]
     bf_at next_label  ]<]>[
 
-    local:cs:redef N X
-    local:cs:sub local:cs:STUB X
+    .cs:redef N X
+    .cs:sub .cs:STUB X
 
-    dup_bf_at next_label  local:cs:X  [-]]<]>[
+    dup_bf_at next_label  .cs:X  [-]]<]>[
     bf_at next_label  <<<
 
-    local:cs:redef N STUB
-    local:cs:inc STUB
+    .cs:redef N STUB
+    .cs:inc STUB
 
-    local:cs:redef 0 JUMPS
+    .cs:redef 0 JUMPS
 
 :@end
     bf_at next_label  >>> [-]
-    dup_bf_at next_label  local:cs:JUMPS  ]
+    dup_bf_at next_label  .cs:JUMPS  ]
     bf_at next_label  ]<
 
-    local:cs:redef local:cs:LABELS X
-    local:cs:sub local:cs:STUB X
-    local:cs:dec X
+    .cs:redef .cs:LABELS X
+    .cs:sub .cs:STUB X
+    .cs:dec X
 
-    dup_bf local:cs:LABELS L
-    dup_bf local:cs:STUB S
-    dup_bf local:cs:X X
+    dup_bf .cs:LABELS L
+    dup_bf .cs:STUB S
+    dup_bf .cs:X X
 
-    dup_bf_at next_label  local:cs:X  ]>[[-]]<
+    dup_bf_at next_label  .cs:X  ]>[[-]]<
 
     bf_at next_label  <<]
 
@@ -63,20 +63,20 @@ next_label n current_label m
 # _set: any of set copy move or user_defined macro
 # lbl: will be passed to _set as first argument  type depends on _set
 :@goto _set lbl
-    set local:cs:LABELS next_label
+    set .cs:LABELS next_label
     _set lbl n
     movesub n next_label
     dec next_label
 
     bf_at next_label  >>[-]>[-][<<<
 
-    local:cs:inc JUMPS
+    .cs:inc JUMPS
 
 :@goto_if v _set lbl
     is_var v
 
     if v
-        set local:cs:LABELS next_label
+        set .cs:LABELS next_label
         _set lbl n
         movesub n next_label
         dec next_label
@@ -86,7 +86,7 @@ next_label n current_label m
 
     bf_at next_label  >>>[<<<
 
-    local:cs:inc JUMPS
+    .cs:inc JUMPS
 
 :@goto_ifn v _set lbl
     is_var v

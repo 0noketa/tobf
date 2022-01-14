@@ -1,0 +1,101 @@
+( 180901 )
+
+: strStartsWith ( substr ptn -- bool )
+    dup @b ( - -- sub ptn ptn.0 )
+    dup
+    {
+        rot dup @b ( - -- ptn ptn.0 sub sub.0 )
+        dup 
+        {
+            rot eq ( - -- ptn sub sub.i==ptn.i )
+            {
+                inc swap inc 'strStartsWith jmp
+            }
+                '.drop2f
+            if jmp
+        }
+            '.drop4f
+        if jmp
+    }
+        '.drop3t
+    if jmp
+: .drop3t
+    drop drop drop 1 ;
+: .drop5f
+    drop
+: .drop4f
+    drop
+: .drop3f
+    drop
+: .drop2f
+    drop
+: .drop1f
+    drop 0 ;
+
+( means !!strncmp(s0, s1, n) )
+: substreq ( s0 s1 n -- bool )
+    dup
+    {
+        swap rot dup @b ( - -- n s1 s0 s0.0 )
+        dup
+            '.L1
+            'strStartsWith.drop4f
+        if jmp
+    : .L1
+        rot dup @b ( - -- n s0 s0.0 s1 s1.0 )
+        dup
+            '.L2
+            'strStartsWith.drop5f
+        if jmp
+    : .L2
+        rot eq ( - -- n s0 s1 s1.0==s0.0 )
+        {
+            inc swap inc swap rot dec
+            'substreq jmp
+        } 
+            'strStartsWith.drop3f
+        if jmp
+    }
+        'strStartsWith.drop3t
+    if jmp
+
+: strchr ( s c -- s+n|null )
+    swap dup @b dup ( - -- c s s.0 s.0 )
+    {
+        rot dup ( - -- s s.0 c c )
+        rot eq ( - -- s c c==s.0 )
+        {
+            drop
+        } {
+            swap inc swap
+            'strchr jmp
+        } if jmp
+    } {
+        drop swap ( - -- s c )
+            'strStartsWith.drop1f
+            { ( s ) }
+        if jmp
+    } if jmp
+
+: strstr ( s ptn -- s+n|null )
+    dup rot ( - -- ptn ptn s )
+    swap @b ( - -- ptn s ptn.0 )
+    dup
+    {
+        strchr ( - -- ptn s+m|null )
+        dup
+        {
+            dup rot dup rot swap ( - -- s+m ptn s+m ptn )
+            strStartsWith ( - -- s+m ptn bool )
+            {
+                drop
+            } {
+                swap inc swap 'strstr jmp
+            }
+            if jmp
+        }
+            'strStartsWith.drop2f
+        if jmp
+    } {
+        drop swap drop
+    } if jmp

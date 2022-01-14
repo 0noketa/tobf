@@ -20,10 +20,10 @@
 # signed args:
 #   if instruction is just for modifing passed variable, "+" means "+=" in C, and "-" means "-=".
 #   if instruction is not just for modifing passed variable (ex: variable as pointer), "-" means breakable variable, and "+" will be ignored.
-#   some instruction ignores this rule for more prior intent (bug of language).
+#   some instruction ignores this rule for more prior intent (bug in language design).
 #   ex: "copy -x ..." and "add ... -x" ignores "-" because "copy" should copy, "add" should add.
 # local names:
-#   if id has prefix "local:", it will be replaced with instance-specific name.
+#   if id has prefix "local:" or ".", it will be replaced with instance-specific name.
 #   it can be used for instance name (currently no other purpose exists).
 # instructions:
 # public ...vars
@@ -1642,13 +1642,17 @@ class Tobf:
             cod = []
 
             for tkn in split(line):
+                sign, tkn = separate_sign(tkn)
+
                 if tkn.startswith("local:"):
                     tkn = local_pfx + tkn[6:]
+                elif tkn.startswith(".") and len(tkn) > 2 and tkn[1].isidentifier():
+                    tkn = local_pfx + tkn[1:]
 
-                cod.append(tkn)
+                cod.append(sign + tkn)
 
             if cod[0] == "public":
-                pub_vs |= set(cod[1:])
+                pub_vs |= set(map(lambda x: separate_sign(x)[1], cod[1:]))
 
                 continue
 

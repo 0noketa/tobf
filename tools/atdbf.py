@@ -1224,14 +1224,24 @@ class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
         return dst
 
 
-class IntermediateToAsmbf(IntermediateCompiler):
-    NAME = "asmbf"
+class IntermediateToAsm2bf(IntermediateCompiler):
+    NAME = "asm2bf"
 
     def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
         super().__init__(src, mem_size, extension)
+        self.output_prog_name = "atdbf"
+        self.output_prog_base_addr = 0
 
     def compile(self) -> List[str]:
-        dst = ["mov r2, 0"]
+        dst = [
+            # entry-point of standalone program
+            f"@{self.output_prog_name}_start",
+            f"call %{self.output_prog_name}",
+            f"end",
+            # entry-point of program as subroutine
+            f"@{self.output_prog_name}",
+            f"mov r2, {self.output_prog_base_addr}"
+        ]
 
         labels = self.get_used_labels()
 
@@ -1240,13 +1250,13 @@ class IntermediateToAsmbf(IntermediateCompiler):
 
         for i in self.src:
             if i.lbl != -1:
-                dst.append(f"@atdbf_{labels.index(i.lbl)}:")
+                dst.append(f"@{self.output_prog_name}_{labels.index(i.lbl)}")
             
             if i.op == "jz":
                 dst.append("rcl r1, r2")
-                dst.append(f"jz r1, @atdbf_{labels.index(i.arg1)}")
+                dst.append(f"jz r1, %{self.output_prog_name}_{labels.index(i.arg1)}")
             elif i.op == "jmp":
-                dst.append(f"jmp @atdbf_{labels.index(i.arg1)}")
+                dst.append(f"jmp %{self.output_prog_name}_{labels.index(i.arg1)}")
             elif i.op == "+":
                 dst.append(f"amp r2, {i.arg1}")
             elif i.op == "-":
@@ -1273,7 +1283,67 @@ class IntermediateToAsmbf(IntermediateCompiler):
         stat = CompilerState(labels)
         dst.extend(self.get_extension_finalizer(stat))
 
-        dst.append("@atdbf_exit")
+        dst.extend([
+            f"@{self.output_prog_name}_exit",
+            "ret"
+        ])
+
+        return dst
+
+
+class IntermediateToElvmIr(IntermediateCompiler):
+    NAME = "ELVM IR"
+
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, extension)
+
+    def compile(self) -> List[str]:
+        dst = ["mov B, 0"]
+
+        labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
+
+        for i in self.src:
+            if i.lbl != -1:
+                dst.append(f"atdbf_{labels.index(i.lbl)}:")
+            
+            if i.op == "jz":
+                dst.append("load A, B")
+                dst.append(f"jeq A, 0, atdbf_{labels.index(i.arg1)}")
+            elif i.op == "jmp":
+                dst.append(f"jmp atdbf_{labels.index(i.arg1)}")
+            elif i.op == "+":
+                dst.append("load A, B")
+                dst.append(f"add A, {i.arg1}")
+                dst.append("store B, A")
+            elif i.op == "-":
+                dst.append("load A, B")
+                dst.append(f"sub A, {i.arg1}")
+                dst.append("store B, A")
+            elif i.op == ">":
+                dst.append(f"add B, {i.arg1}")
+            elif i.op == "<":
+                dst.append(f"sub B, {i.arg1}")
+            elif i.op == ",":
+                dst.append("getc A")
+                dst.append("store B, A")
+            elif i.op == ".":
+                dst.append("load A, B")
+                dst.append("putc A")
+            elif i.op == "assign":
+                dst.append(f"store B, {i.arg1}")
+            elif i.op == "exit":
+                stat = CompilerState(labels)
+                dst.extend(self.get_extension_finalizer(stat))
+                dst.append("exit")
+            elif self.is_extension(i.op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(i, stat))
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_finalizer(stat))
 
         return dst
 
@@ -2013,7 +2083,7 @@ target languages:
                 Generic 2D Brainfuck
   Enigma2D      Enigma-2D
   PATH          
-  asmbf         uses bflabels preprocessor
+  asm2bf(asmbf) uses bflabels preprocessor
   BrainfuckAsmCompiler(bfasmcomp)
                 https://gitlab.com/hilmar-ackermann/brainfuckassembler
                 https://github.com/esovm/BrainfuckAsmCompiler
@@ -2047,7 +2117,8 @@ target languages:
         "pth": IntermediateToPATH,
         "erp": IntermediateToErp,
         "x86": IntermediateToX86,
-        "asmbf": IntermediateToAsmbf,
+        "asmbf": IntermediateToAsm2bf,
+        "asm2bf": IntermediateToAsm2bf,
         "BrainfuckAsmCompiler": IntermediateToBrainfuckAsmCompiler,
         "bfasmcomp": IntermediateToBrainfuckAsmCompiler,
         "CASL2": IntermediateToCASL2,

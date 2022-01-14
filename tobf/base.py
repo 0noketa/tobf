@@ -7,7 +7,7 @@ import io
 
 src_extension = "txt"
 
-def split(s:str, sep=None, maxsplit=-1) -> list:
+def split(s:str, sep=None, maxsplit=-1) -> List[str]:
     if sep == None:
         return list(filter(len, map(str.strip, s.strip().split(maxsplit=maxsplit))))
     else:
@@ -100,16 +100,17 @@ class SubsystemBase:
         self._enums = {}
         self._fixed = False
         self._vars = []
+        self._var_stack = {}
         self._pub_vars = []
         self._size = 0
 
     def __lt__(self, sub) -> bool:
         if self._address < sub._address:
             return True
-        
+
         if self._address > sub._address:
             return False
-        
+
         return self._size < sub._size
 
     def name(self):
@@ -180,19 +181,60 @@ class SubsystemBase:
         return self._vars.copy()
     def has_var(self, name: str) -> bool:
         return name in self.vars()
-    def def_var(self, name: str, is_public=True) -> bool:
+    def def_var(self, name: str, is_public=True, stack=False) -> bool:
         if self._fixed and self._size <= len(self._vars):
             raise Exception(f"cant add var to fixed area of {self._name}")
         if name.isdigit():
             return False
 
-        if not (name in self._vars):
-            self._vars.append(name)
+        if stack:
+            if name not in self._vars:
+                idx = len(self._vars)
+                self._vars.append(f"__tobf_hidden_var{idx}")
+            else:
+                idx = self._vars.index(name)
+                self._vars[idx] = f"__tobf_hidden_var{idx}"
+
+            if name not in self._var_stack:
+                self._var_stack[name] = []
+            else:
+                self._var_stack[name].append(idx)
+        elif name not in self._vars:
+            idx = self.indexof_reserved_var()
+        else:
+            idx = -1
+
+        if idx != -1:
+            self._vars[idx] = name
 
             if is_public:
                 self._pub_vars.append(name)
 
         return True
+    def indexof_reserved_var(self):
+        for i, name in enumerate(self._vars):
+            if name.startswith("__tobf_reserved_var"):
+                return i
+
+        i = len(self._vars)
+
+        self._vars.append(f"__tobf_reserved_var{i}")
+
+        return i
+    def undef_var(self, name):
+        if name not in self._vars:
+            return
+        idx = self._vars.index(name)
+        self._vars[idx] = f"__tobf_reserved_var{idx}"
+    def pop_var(self, name):
+        if name not in self._var_stack:
+            return
+
+        self.undef_var(name)
+
+        if len(self._var_stack[name]) > 0:
+            idx = self._var_stack[name].pop()
+            self._vars[idx] = name
     def valueof(self, name: str) -> int:
         if self.has_const(name):
             return self._consts[name]
@@ -268,7 +310,7 @@ class MacroProc:
         self.params = params
         self.codes = codes
         self.has_va = has_va
-        
+
     def put(self, name: str, args: List[str], put: Callable[[str, List[str]]], mod="", vars: List[str] = []):
         """mod, vars: information of module this macro function belongs to"""
 
