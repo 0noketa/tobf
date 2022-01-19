@@ -1,0 +1,116 @@
+c d dpt cond cond2
+
+loadas mem ptrmem 256
+mem:@enable_skip
+loadas src ptrmem 256
+src:@enable_skip
+
+:main
+    load_src
+
+    exec
+
+:load_src
+    tmp dpt cond cond2
+
+    input c
+    sub '! c
+    while c
+        add '! c
+
+        copy c d
+        ifnotin d '> '< '+ '- '. ', '[ ']
+            clear c
+        endifnotin d '> '< '+ '- '. ', '[ ']
+
+        move c d
+        if d
+            src:@ptr_inc 0
+            src:@w_move d 0
+        endif d
+
+        input c
+        sub '! c
+    endwhile c
+
+    src:@ptr_clear 0
+
+    tmp -dpt -cond -cond2
+
+:case n
+    copy c d
+    eq n d
+    if d
+:endcase
+    endif d
+:exec
+    inc cond
+    while cond
+        tmp dpt cond2
+
+        src:@ptr_inc 0
+        src:@r_copy 0 c
+
+        case 0
+            src:@ptr_clear 0
+            dec cond
+        endcase
+
+        case '+
+            mem:@add 1 0
+        endcase
+        case '-
+            mem:@sub 1 0
+        endcase
+        case '>
+            mem:@ptr_inc 0
+        endcase
+        case '<
+            mem:@ptr_dec 0
+        endcase
+        case '.
+            mem:@set print 0
+        endcase
+        case ',
+            mem:@set input 0
+        endcase
+
+        tmp -dpt -cond2
+
+        case '[
+            mem:@r_copy 0 d
+            not -d +dpt +cond2
+            while cond2
+                src:@ptr_inc 0
+
+                src:@r_copy 0 c d
+
+                eq '[ d
+                moveadd d dpt
+
+                eq '] c
+                movesub c dpt
+
+                copy dpt d
+                not -d -cond2
+            endwhile cond2
+        endcase
+
+        case ']
+            mem:@r_copy 0 d
+            bool -d +dpt +cond2
+            while cond2
+                src:@ptr_dec 0
+                src:@r_copy 0 c d
+
+                eq '] d
+                moveadd d dpt
+
+                eq '[ c
+                movesub c dpt
+
+                copy dpt d
+                not -d -cond2
+            endwhile cond2
+        endcase
+    endwhile cond

@@ -1,0 +1,141 @@
+c d dpt cond i j size p
+
+loadas mem slowmem 32
+loadas src mem 256
+
+:main
+    load_src
+
+    exec
+
+:load_src
+    tmp dpt j cond p
+
+    input c
+    sub '! c
+    while c
+        add '! c
+
+        copy c d
+        ifnotin d '> '< '+ '- '. ', '[ ']
+            clear c
+        endifnotin d '> '< '+ '- '. ', '[ ']
+
+        move c d
+        if d
+            src:@w_move d i
+
+            inc i
+        endif d
+
+        input c
+        sub '! c
+    endwhile c
+
+    move i size
+
+    tmp -dpt -j -cond -p
+
+:case n
+    copy c d
+    eq n d
+    if d
+:endcase
+    endif d
+:exec
+    inc cond
+    while cond
+        tmp j dpt
+
+        src:@r_copy i c
+
+        case '+
+            # mem:@add 1 p
+            mem:@r_copy p d
+            inc d
+            mem:@w_copy d p
+        endcase
+        case '-
+            mem:@r_copy p d
+            dec d
+            mem:@w_copy d p
+        endcase
+        case '>
+            inc p
+        endcase
+        case '<
+            dec p
+        endcase
+        case '.
+            mem:@r_copy p d
+            print d
+        endcase
+        case ',
+            input d
+            mem:@w_copy d p
+        endcase
+
+        tmp -j -dpt
+
+        case '[
+            mem:@r_copy p d
+            not d
+            if d
+                copy size j
+                while j
+                    src:@r_copy i c d
+
+                    eq '[ d
+                    moveadd d dpt
+
+                    eq '] c
+                    if c
+                        dec dpt
+
+                        copy dpt d
+                        not d
+                        if d
+                            dec i
+                            set 1 j
+                        endif d
+                    endif c
+
+                    inc i
+                    dec j
+                endwhile j
+            endif d
+        endcase
+
+        case ']
+            mem:@r_copy p d
+            if d
+                inc i
+                copy i j
+                while i
+                    dec i
+                    src:@r_copy i c d
+
+                    eq '] d
+                    moveadd d dpt
+
+                    eq '[ c
+                    if c
+                        dec dpt
+
+                        copy dpt d
+                        not d
+                        if d
+                            move i j
+                        endif d
+                    endif c
+                endwhile i
+                move j i
+            endif d
+        endcase
+
+        inc i
+        copy i d
+        copysub size d
+        not d
+        movesub d cond
+    endwhile cond

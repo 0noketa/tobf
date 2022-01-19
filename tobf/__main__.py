@@ -7,6 +7,7 @@ from subsystems import Subsystem_Reserved, Subsystem_ConstSet, Subsystem_Consts,
 from sub_mem import Subsystem_Memory
 from sub_fastmem import Subsystem_FastMem
 from sub_slowmem import Subsystem_SlowMem
+from sub_ptrmem import Subsystem_PtrMem
 from sub_str import Subsystem_Str
 from sub_stk import Subsystem_Stk
 
@@ -64,6 +65,7 @@ if __name__ == "__main__":
     compiler.install_subsystem("mem", Subsystem_Memory)
     compiler.install_subsystem("fastmem", Subsystem_FastMem)
     compiler.install_subsystem("slowmem", Subsystem_SlowMem)
+    compiler.install_subsystem("ptrmem", Subsystem_PtrMem)
     compiler.install_subsystem("str", Subsystem_Str)
     compiler.install_subsystem("stk", Subsystem_Stk)
 

@@ -305,6 +305,7 @@ class Tobf:
             self.subsystem_instances_by_name_[alias] = instance
 
             instance.set_base(addr)
+            self.subsystem_instances_.sort()
 
             if instance != None:
                 instance.put_init(args)
@@ -459,9 +460,73 @@ class Tobf:
             self.put(s)
             self.put(">" * abs(addr))
         else:
-            self.put(">" * self.addressof(addr))
+            # self.put(">" * self.addressof(addr))
+            self.put_address_selector(self.addressof(addr))
             self.put(s)
-            self.put("<" * self.addressof(addr))
+            # self.put("<" * self.addressof(addr))
+            self.put_address_deselector(self.addressof(addr))
+
+    def put_address_selector(self, target_addr: int):
+        if target_addr < len(self.vars_) or self.fast():
+            self.put(">" * target_addr)
+            return
+
+        current_addr = 0
+
+        for sub in self.subsystem_instances_:
+            self.put(">" * (sub.offset(0) - current_addr))
+            current_addr = sub.offset(0)
+
+            if sub.size() == 0:
+                continue
+
+            if current_addr + sub.size() > target_addr:
+                self.put(">" * (target_addr - current_addr))
+                return
+
+            if sub.can_skip():
+                sub.put_skip_right()
+            else:
+                self.put(">" * sub.size())
+            
+            current_addr += sub.size()
+
+    def put_address_deselector(self, target_addr: int):
+        if target_addr < len(self.vars_) or self.fast():
+            self.put("<" * target_addr)
+            return
+
+        i = 0
+        current_addr = 1
+
+        for sub in self.subsystem_instances_:
+            current_addr = sub.offset(0)
+
+            if sub.size() == 0:
+                continue
+
+            if current_addr + sub.size() > target_addr:
+                break
+
+            current_addr += sub.size()
+            i += 1
+
+        for sub in reversed(self.subsystem_instances_[:i]):
+            next_addr = sub.offset(0) + sub.size()
+            self.put("<" * (current_addr - next_addr))
+
+            if sub.size() == 0:
+                continue
+
+            if sub.can_skip():
+                sub.put_skip_left()
+            else:
+                self.put("<" * sub.size())
+
+            current_addr -= sub.size()
+
+        if current_addr > 0:
+            self.put("<" * current_addr)
 
     def put_at_every(self, addrs: List[Union[str, int]], s: str, unique=True):
         used = []
