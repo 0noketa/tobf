@@ -1,0 +1,287 @@
+
+module Bool
+    :mvadd src dst
+        if src
+            add 1 dst
+        end
+    end
+    :mvsub src dst
+        if src
+            sub 1 dst
+        end
+    end
+    :mv src dst
+        clear dst
+        mvadd src dst
+    end
+
+    macro cpadd src dst
+        int bool_tmp
+        if src
+            moveadd src bool_tmp
+            add 1 dst
+        end
+        moveadd bool_tmp src
+    end
+    macro cpsub src dst
+        int bool_tmp
+        if src
+            moveadd src bool_tmp
+            sub 1 dst
+        end
+        moveadd bool_tmp src
+    end
+    :cp src dst
+        clear dst
+        cpadd src dst
+    end
+    
+    macro replace x
+        int bool_tmp
+        mvadd x bool_tmp
+        moveadd bool_tmp x
+    end
+end
+module Not
+    :mvadd src dst
+        add 1 dst
+        if src
+            sub 1 dst
+        end
+    end
+    :mvsub src dst
+        sub 1 dst
+        if src
+            add 1 dst
+        end
+    end
+    :mv src dst
+        clear dst
+        mvadd src dst
+    end
+
+    macro cpadd src dst
+        int not_tmp
+        add 1 dst
+        if src
+            moveadd src not_tmp
+            sub 1 dst
+        end
+        moveadd not_tmp src
+    end
+    macro cpsub src dst
+        int not_tmp
+        sub 1 dst
+        if src
+            moveadd src not_tmp
+            add 1 dst
+        end
+        moveadd not_tmp src
+    end
+    :cp src dst
+        clear dst
+        cpadd src dst
+    end
+
+    macro replace x
+        int bool_tmp
+        mvadd x bool_tmp
+        moveadd bool_tmp x
+    end
+end
+
+module Xor
+    :calc x y z
+        int xor_tmp
+
+        scope
+            import Bool
+            Bool.cpadd x xor_tmp
+        end
+
+        if xor_tmp
+            scope
+                import Not
+                Not.cp y z
+            end
+        end
+        scope
+            import Not
+            Not.cpadd x xor_tmp
+        end
+        if xor_tmp
+            scope
+                import Bool
+                Bool.cp y z
+            end
+        end
+    end
+end
+
+module And
+    macro calc x y z
+        int and_tmp and_tmp2
+
+        clear z
+    
+        if x
+            moveadd x and_tmp
+            if y
+                moveadd y and_tmp2
+                add 1 z
+            end
+            moveadd and_tmp2 y
+        end
+        moveadd and_tmp x
+
+        if y
+            moveadd y and_tmp2
+            if x
+                moveadd x and_tmp
+
+                add 1 z
+            end
+            moveadd and_tmp x
+        end
+        moveadd and_tmp2 y
+    end
+end
+
+
+module Util
+    :add_any src dst
+        is_val src
+            add src dst
+        endis
+        is_var src
+            moveadd src dst
+        endis
+    end
+    :set_any src dst
+        is_val src
+            set src dst
+        endis
+        is_var src
+            clear dst
+            moveadd src dst
+        endis
+    end
+
+    :mvadd src dst
+        moveadd src dst
+    end
+    :mvsub src dst
+        while src
+            sub 1 src dst
+        end
+    end
+    :mv src dst
+        clear dst
+        moveadd src dst
+    end
+
+    macro cpadd src dst
+        import Util1
+        Util1.cpadd src dst
+    end
+    macro cpsub src dst
+        import Util1
+        Util1.cpadd src dst
+    end
+    macro cp src dst
+        import Util1
+        Util1.cp src dst
+    end
+
+    macro with x f
+        import Util2
+        Util2.with x f
+    end
+
+    macro calc_eq left right ans
+        import Util2
+        Util2.calc_eq left right ans
+    end
+
+    macro calc_bool src dst
+        import Bool
+        Bool.cp src dst
+    end
+
+    macro calc_not src dst
+        import Not
+        Not.cp src dst
+    end
+
+    macro calc_and left right ans
+        import And
+        And.calc left right ans
+    end
+
+    macro calc_xor left right ans
+        import Xor
+        Xor.calc left right ans
+    end
+
+    macro calc_ccnot x y z z2
+        int ccnot_tmp
+        calc_and x y ccnot_tmp
+        calc_xor z ccnot_tmp z2
+    end
+
+    # breaks x
+    macro mul x y
+        import Util3
+        Util3.mul x y
+    end
+end
+
+Util Util1 a
+    :cpadd src dst
+        moveadd src dst .a
+        moveadd .a src
+    end
+    :cpsub src dst
+        while src
+            sub 1 dst
+            add 1 .a
+        end
+        moveadd .a src
+    end
+    :cp src dst
+        clear dst
+        cpadd src dst
+    end
+end
+
+Util1 Util2 b
+    :with x f
+        cpadd x .b
+        f .b
+    end
+
+    :calc_eq left right ans
+        set 1 ans
+
+        cpadd right .b
+        cpsub left .b
+        set 1 ans
+        if .b
+            sub 1 ans
+        end
+    end
+end
+
+Util2 Util3 c
+    # breaks x
+    :mul x y
+        add_any x .b
+        moveadd y .a
+        while .b
+            moveadd .a y .c
+            moveadd .c .a
+            sub 1 .b
+        end
+        clear .a
+    end
+end

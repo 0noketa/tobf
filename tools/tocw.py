@@ -400,6 +400,9 @@ class States:
 
             if branches is None:
                 idxs = zip(range(input_types), [reverse_bits(i, input_size) for i in range(input_types)])
+                idxs = list(idxs)
+                if len(idxs) < 2:
+                    idxs.append((-1, -1))
             else:
                 idxs = zip(branches, branches)
 
@@ -439,13 +442,13 @@ class States:
 
         self.draw_path(dst, base_x, base_y, stat)
 
-        draw_line(dst, base_x0 + 0, base_y + 0, "?+S?S", vertical=True)
-        draw_line(dst, base_x0 + 1, base_y + 1, "S+R", vertical=True)
+        draw_line(dst, base_x0 + 0, base_y, "? +S?S", vertical=True)
+        draw_line(dst, base_x0 + 1, base_y + 2, "S+R", vertical=True)
 
-        draw_char(dst, base_x + 2, base_y + 4, "+")
-        draw_char(dst, base_x + 4, base_y + 4, "+")
-        draw_char(dst, base_x0 + 0, base_y + 5, "R")
-        draw_line(dst, base_x + 1, base_y + 5, "S?S?")
+        draw_char(dst, base_x + 2, base_y + 5, "+")
+        draw_char(dst, base_x + 4, base_y + 5, "+")
+        draw_char(dst, base_x0 + 0, base_y + 6, "R")
+        draw_line(dst, base_x + 1, base_y + 6, "S?S?")
 
         pad(dst)
 

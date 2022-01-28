@@ -511,19 +511,18 @@ class Tobf:
             current_addr += sub.size()
             i += 1
 
+        current_addr = target_addr
+
         for sub in reversed(self.subsystem_instances_[:i]):
             next_addr = sub.offset(0) + sub.size()
             self.put("<" * (current_addr - next_addr))
-
-            if sub.size() == 0:
-                continue
 
             if sub.can_skip():
                 sub.put_skip_left()
             else:
                 self.put("<" * sub.size())
 
-            current_addr -= sub.size()
+            current_addr = sub.offset(0)
 
         if current_addr > 0:
             self.put("<" * current_addr)

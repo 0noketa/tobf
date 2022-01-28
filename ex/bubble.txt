@@ -4,7 +4,7 @@ tmp t
 # :main
 
 # reserves single area for in/out
-load resv 9
+load resv 7
 
 loadas a mem 256
 

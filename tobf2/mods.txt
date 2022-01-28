@@ -1,0 +1,50 @@
+link util
+
+module ModA x y z
+    macro init v
+        import Util
+
+        Util.add_any v .x
+    end
+    :writeX v
+        moveadd v .x
+    end
+    :readX v
+        moveadd .x v
+    end
+end
+
+module ModB x y z
+    macro init v
+        import Util
+
+        Util.add_any v .x
+    end
+    :writeX v
+        moveadd v .x
+    end
+    :readX v
+        moveadd .x v
+    end
+end
+
+
+int a b
+scope
+    import Util3
+    add 8 b
+    Util3.mul 8 b
+end
+
+scope
+    import Util
+    import ModA 33
+    scope
+        import ModB b
+
+        ModA.readX a
+        ModB.readX b
+
+        print a b
+    end
+end

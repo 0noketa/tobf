@@ -1,150 +1,67 @@
-a x b y c z e n m
+n x i j k y z
 
-:clean
-    clear a x b y c z e n m
+:writeint v
+    copyadd v n
+    while n
+        dec n
+        add 10 x
+        move x -i -j -k
+        inc i
 
-:_copyadd x y
-    moveadd x e
-    moveadd e x y
-:_copysub x y
-    moveadd x e
-    move e +x -y
+        inc z
+        if i
+            dec z
+            add 10 i
+            moveadd i y
+        endif i
+        moveadd y i
+        moveadd z j
 
-:writeint arg
-    is_var arg
-    add 3 x
-    while x
-        clear b
-        add 10 y
-        while y
-            clear c
-            add 10 z
-            while z
-                _copyadd n m
-                _copysub arg m
-                ifelse m +e
-                else m -e
-                    dec a
-                    clear x
-                    inc x
-                    dec b
-                    clear y
-                    inc y
-                    dec c
-                    clear z
-                    inc z
-                endifelse m -e
+        inc z
+        if j
+            dec z
+            add 10 j
+            moveadd j y
+        endif j
+        moveadd y j
+        moveadd z k
 
-                inc n
-                inc c
-                dec z
-            endwhile z
+        if k
+            add 10 k
+            moveadd k y
+        endif k
+        moveadd y k
+    endwhile n
 
-            inc b
-            dec y
-        endwhile y
+    tmp y
+    add '0 z
+    tmp -y
 
-        inc a
-        dec x
-    endwhile x
+    if k
+        moveadd z k y
+        print k
+    endif k
+    moveadd z y
 
-    add 48 z
+    if j
+        moveadd y j k
+        print j
+    endif j
+    moveadd y k
 
-    ifelse a e
-        copyadd z a
-        print a
+    moveadd k i
+    print i
+    clear i
 
-        copyadd z b
-        print b
-    else a e
-        if b
-            copyadd z b
-            print b
-        endif b
-    endifelse a e
-
-    moveadd z c
-    print c
-
-    clear n b c z
+:writelnint v
+    writeint v
+    print 10
 
 :newline
     print 10
 
 :space
     print 32
-
-:writelnint arg
-    writeint arg
-    newline
-
-:writeint+space arg
-    writeint arg
-    space
-
-:writeint+n arg n
-    writeint arg
-    print n
-
-:writehex1 arg
-    copy arg n
-    set 16 a
-    while a
-        dec a
-        inc z
-        set 16 b
-        while b
-            dec b
-            ifelse n e
-                move n m
-                dec m
-            else n e
-                set 15 x y
-                movesub a x
-                movesub b y
-                clear z
-            endifelse n e
-            move m n
-        endwhile b
-    endwhile a
-
-:writehex2 v
-    move v a b
-
-    inc z
-    ifnotin b 0 1 2 3 4 5 6 7 8 9
-        add 55 a
-        dec z
-    endifnotin b 0 1 2 3 4 5 6 7 8 9
-    if z
-        add 48 a
-    endif z
-
-    print a
-    clear a
-
-:writehex arg
-    writehex1 arg
-    if x
-        writehex2 x
-    endif x
-    writehex2 y
-
-:writehexz arg
-    writehex1 arg
-    set 2 c
-    while c
-        writehex2 x
-        move y x
-        dec c
-    endwhile c
-
-:writelnhex arg
-    writehex arg
-    newline
-:writelnhexz arg
-    writehexz arg
-    newline
 
 
 end

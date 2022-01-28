@@ -861,11 +861,10 @@ def compile(src: List[str], rstack_size=8, dstack_size=64, bf16=False, anon_func
         (dstack_size, f"loadas {dstack_name} stk {dstack_size}")
     ]
 
-    if mem_size > 0:
-        if mem_size > 8:
-            mem_loaders.append((mem_size, f"loadas {mem_name} mem {mem_size}"))
-        else:
-            mem_loaders.append((mem_size, f"loadas {mem_name} fastmem {mem_size}"))
+    if mem_size > 8:
+        mem_loaders.append((mem_size, f"loadas {mem_name} mem {mem_size}"))
+    else:
+        mem_loaders.append((mem_size, f"loadas {mem_name} fastmem {mem_size}"))
 
     mem_loaders.sort(key=(lambda x: x[0]))
     head.extend([ldr[1] for ldr in mem_loaders])
