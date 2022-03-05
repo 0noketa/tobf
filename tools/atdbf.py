@@ -1658,7 +1658,7 @@ class IntermediateToEnigma2D(IntermediateCompiler):
                 code_line2 += " " * i.arg1
                 self.pad_lines(jump_lines, default=" " * i.arg1)
             elif i.op == "assign":
-                code_line += "[-]" + i.op * i.arg1
+                code_line += "[-]" + ("-" if i.arg1 < 0 else "+") * i.arg1
                 code_line2 += " " * (i.arg1 + 3)
                 self.pad_lines(jump_lines, default="   " + " " * i.arg1)
             elif i.op == "exit":
