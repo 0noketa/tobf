@@ -10,13 +10,28 @@ src:@enable_skip
 
     exec
 
-:load_src
-    tmp dpt cond cond2
-
+# cond=0
+:load_char
     input c
-    sub '! c
-    while c
-        add '! c
+
+    # EOF?
+    inc c
+    bool c d
+    dec c
+
+    if d
+        dec d
+        set '! -c +d
+        bool c +cond
+        moveadd d c
+    endif d
+
+:load_src
+    tmp dpt cond2
+
+    load_char
+    while cond
+        dec cond
 
         copy c d
         ifnotin d '> '< '+ '- '. ', '[ ']
@@ -29,13 +44,13 @@ src:@enable_skip
             src:@w_move d 0
         endif d
 
-        input c
-        sub '! c
-    endwhile c
+        load_char
+    endwhile cond
+    clear c
 
     src:@ptr_clear 0
 
-    tmp -dpt -cond -cond2
+    tmp -dpt -cond2
 
 :case n
     copy c d
