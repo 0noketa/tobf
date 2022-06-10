@@ -91,29 +91,21 @@ module Not
 end
 
 module Xor
-    :calc x y z
+    macro calc x y z
+        import Bool
+        import Not
         int xor_tmp
 
-        scope
-            import Bool
-            Bool.cpadd x xor_tmp
+        clear z
+
+        Bool.cpadd x xor_tmp
+        if xor_tmp
+            Not.cpadd y z
         end
 
+        Not.cpadd x xor_tmp
         if xor_tmp
-            scope
-                import Not
-                Not.cp y z
-            end
-        end
-        scope
-            import Not
-            Not.cpadd x xor_tmp
-        end
-        if xor_tmp
-            scope
-                import Bool
-                Bool.cp y z
-            end
+            Bool.cpadd y z
         end
     end
 end

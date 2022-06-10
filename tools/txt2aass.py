@@ -1,5 +1,8 @@
 
+# this program gernerates "Around and around, sleeping sound" program
+# that generates text passed to this program. non-ASCII characters will be broken.
 import sys
+
 
 def create_value_generator(a, b, w=None, first=True):
     if w is None:
@@ -295,6 +298,19 @@ def txt2aass():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "help":
+        print("""
+this program gernerates "Around and around, sleeping sound" program
+that generates text passed to this program. non-ASCII characters will be broken.
+
+python txt2aass.py < txt > program
+  generates program from text.
+python txt2aass.py help
+python txt2aass.py find
+    stub. finds parameters of selected template.
+""")
+        sys.exit(0)
+
     if len(sys.argv) > 1 and sys.argv[1] == "find":
         mx = int(sys.argv[2]) if len(sys.argv) > 2 else 16
         tbl = find_value(create_value_generator, mx)

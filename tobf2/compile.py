@@ -344,8 +344,6 @@ class Macro:
         return mac
 
     def load(self, file: io.TextIOWrapper = None, linked_file_names: List[str] = None, file_extension=".txt"):
-        # returns macros defined in this macro
-
         dpt = 1
         heads = ["scope", "if", "while", "do"]
         linked_file_names = [] if linked_file_names is None else linked_file_names
