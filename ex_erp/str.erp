@@ -1,0 +1,24 @@
+import erp_str
+import erp_str2
+import erp_puts
+
+
+ary s 14
+: main
+    's
+    dup "Hello, WorlD" strcpy
+    dup "!" strcat
+    dup dup strlen + 2 - 'd' swap !b
+    dup puts ln
+
+    's . ln
+    's "He" strStartsWith . ln
+    's "he" strStartsWith . ln
+    's "Ho" strStartsWith . ln
+
+    's "Hello!" streq . ln
+    's "Hello!" 5 substreq . ln
+    
+    's 'W' strchr . ln
+    's "ld" strstr . ln
+    ;

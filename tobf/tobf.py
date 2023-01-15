@@ -280,6 +280,7 @@ class Tobf:
 
     def get_instance(self, name) -> Subsystem:
         """returns subsystem instance"""
+        sign, name = separate_sign(name)
 
         if not (name in self.subsystem_instances_by_name_.keys()):
             raise Exception(f"subsystem aliased as {name} is not loaded")
@@ -791,21 +792,50 @@ class Tobf:
             raise Exception(f"{in_addr} is not an array")
 
         sub = self.get_instance(in_addr)
+        first = sub.addressof("0")
+        cell_size = sub.addressof("1") - first
+        src_and_dst_have_same_layout = sub.array_size() >= 3 and sub.array_size() <= 256
 
-        if sub.is_readable_array():
+
+        if not sub.is_readable_array():
+            raise Exception(f"{in_addr} is not readable")
+
+        for dst in out_addrs:
+            sign, dst = separate_sign(dst)
+
+            if not self.is_sub(dst):
+                raise Exception(f"{dst} is not ab array")
+
+            dst_sub = self.get_instance(dst)
+
+            if not dst_sub.is_writable_array():
+                raise Exception(f"{dst} is readonly")
+
+            if not src_and_dst_have_same_layout:
+                continue
+
+            dst_cell_size = dst_sub.addressof("1") - dst_sub.addressof("0")
+            if (sub.array_size() > dst_sub.array_size()
+                    or cell_size != dst_cell_size):
+                src_and_dst_have_same_layout = False
+                import sys
+                sys.stderr.write(f"cell_size: {cell_size}, {dst_cell_size}\n")
+
+        if copy or not src_and_dst_have_same_layout:
+            import sys
+            sys.stderr.write("long_copy\n")
+
             for i in range(sub.array_size()):
+                if i >= dst_sub.array_size():
+                    break
+
                 addr = sub.addressof(str(i))
 
                 dsts = []
                 for dst in out_addrs:
-                    if not self.is_sub(dst):
-                        raise Exception(f"can not copy array to variable")
-
                     dst_sign, dst = separate_sign(dst)
                     dst_sub = self.get_instance(dst)
 
-                    if not dst_sub.is_writable_array() or i >= dst_sub.array_size():
-                        continue
 
                     dst_addr = dst_sub.addressof(str(i))
                     dsts.append(f"{dst_sign}#{dst_addr}")
@@ -815,6 +845,61 @@ class Tobf:
                         self.put_copy(addr, dsts, tmps)
                     else:
                         self.put_move(addr, dsts, tmps)
+
+            return
+
+        # move
+
+        dst_subs: List[Subsystem] = [self.get_instance(dst) for dst in out_addrs]
+        signs = [separate_sign(dst)[0] for dst in out_addrs]
+        dst_addrs = [dst_sub.addressof("0") for dst_sub in dst_subs]
+
+        # clear every first element of dsts
+        for i, dst_addr in enumerate(dst_addrs):
+            if signs[i] == "":
+                self.put_at(dst_addr, "[-]")
+    
+        # move first
+        self.put_at(first, "[")
+
+        for i, dst_addr in enumerate(dst_addrs):
+            o = "-" if signs[i] == "-" else "+"
+            self.put_at(dst_addr, o)
+    
+        self.put_at(first, "-]")
+
+
+        # move array[1:]
+
+        self.put(">" * first)
+        self.put("+" * (sub.array_size() - 1))
+        self.put("[")
+
+        # at array[1] if i=size-1
+        self.put(">" * cell_size)
+
+        # clear dst
+        for i, dst_addr in enumerate(dst_addrs):
+            if signs[i] == "":
+                self.put_at(dst_addr - first, "[-]")
+    
+        # move
+        self.put("[!!")
+
+        for i, dst_addr in enumerate(dst_addrs):
+            o = "-" if signs[i] == "-" else "+"
+            self.put_at(dst_addr - first, o)
+    
+        self.put("-]")
+        self.put("<" * cell_size)
+
+        self.put("-[>+<-]>]")
+
+        # end move array[1:]
+
+        self.put("<" * (cell_size * (sub.array_size() - 1)))
+        self.put("<" * first)
+
 
     def put_print_or_input(self, addrs: List[Union[str, int]], print=False, tmps: List[int] = []):
         tmp = -1

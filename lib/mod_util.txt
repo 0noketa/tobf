@@ -206,6 +206,35 @@ x y z x2 y2 z2 e e2
     @divmod dividend divisor z2 rest
     clear z2
 
+# uses x y
+# arg0 != arg1 != result
+:@mul arg0 arg1 result
+    is_var arg0 arg1 result
+
+    while arg0
+        dec arg0
+        inc x
+
+        copyadd y result
+    endwhile arg0
+
+    move x arg0
+
+# uses x
+# arg1 != result
+:@mul_const arg0 arg1 result
+    is_val arg0
+    is_var arg1 result
+
+    while arg1
+        dec arg1
+        inc x
+
+        add arg0 result
+    endwhile arg1
+
+    move x arg1
+
 
 # not tested
 # uses x x2 z z2

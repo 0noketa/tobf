@@ -904,15 +904,6 @@ class IntermediateCompiler:
                     else:
                         break
 
-            if v.op in ["jmp", "exit"]:
-                for j in range(i + 1, len(self.src)):
-                    v2 = self.src[j]
-
-                    if v2.lbl == -1:
-                        self.src[j] = IntermediateInstruction(-1, "", 0, 0)
-                        optimized = True
-                    else:
-                        break
 
         j = -1
         vi = -1
@@ -1022,6 +1013,9 @@ static uint8_t data[DATA_SIZE], *p = data;
         stat = CompilerState(labels)
         initializer = self.get_extension_initializer(stat)
 
+        # this number of following steps are already used
+        optimized_steps = 0
+
         if None in initializer:
             sep_idx = initializer.index(None)
 
@@ -1033,7 +1027,11 @@ static uint8_t data[DATA_SIZE], *p = data;
 
         dst.extend(initializer)
 
-        for i in self.src:
+        for idx, i in enumerate(self.src):
+            if optimized_steps > 0:
+                optimized_steps -= 1
+                continue
+
             if i.lbl != -1:
                 dst.append(f"L{labels.index(i.lbl)}:")
 
@@ -1043,7 +1041,20 @@ static uint8_t data[DATA_SIZE], *p = data;
                 v = "*p"
 
             if i.op == "jz":
-                dst.append(f"if (!{v}) goto L{labels.index(i.arg1)};")
+                i2 = self.src[idx + 1]
+
+                # from:
+                #   jz x
+                #   jmp y
+                #   x:
+                # to:
+                #   jnz y
+                #   x:
+                if i2.op == "jmp" and i2.lbl == -1 and i.arg1 == idx + 2:
+                    dst.append(f"if ({v}) goto L{labels.index(i2.arg1)};")
+                    optimized_steps = 1
+                else:
+                    dst.append(f"if (!{v}) goto L{labels.index(i.arg1)};")
             elif i.op == "jmp":
                 dst.append(f"goto L{labels.index(i.arg1)};")
             elif i.op == "+":
@@ -1089,7 +1100,7 @@ class IntermediateToX86(IntermediateCompiler):
 ; #include <stdio.h>
 ; #include <stdint.h>
 ; extern void bf_main();
-; uint8_t bf_data[1024];
+; uint8_t bf_data[65536];
 ; uint32_t bf_getc() { return getchar(); }
 ; void bf_putc(uint32_t v) { putchar(v); }
 ; int main(int argc, char *argv[]) { bf_main(); return 0; }
@@ -1108,11 +1119,16 @@ mov edx, bf_data
 """.split("\n")
 
         labels = self.get_used_labels()
-
         stat = CompilerState(labels)
         dst.extend(self.get_extension_initializer(stat))
 
-        for i in self.src:
+        optimized_steps = 0
+
+        for idx, i in enumerate(self.src):
+            if optimized_steps > 0:
+                optimized_steps -= 1
+                continue
+
             if i.lbl != -1:
                 dst.append(f".L{labels.index(i.lbl)}:")
 
@@ -1122,19 +1138,26 @@ mov edx, bf_data
                 v = "byte[edx]"
 
             if i.op == "jz":
+                i2 = self.src[idx + 1]
+
                 dst.append(f"movzx eax, {v}")
                 dst.append("or eax, eax")
-                dst.append(f"jz .L{labels.index(i.arg)}")
+
+                if i2.op == "jmp" and i2.lbl == -1 and i.arg1 == idx + 2:
+                    dst.append(f"jnz .L{labels.index(i2.arg1)}")
+                    optimized_steps = 1
+                else:
+                    dst.append(f"jz .L{labels.index(i.arg1)}")
             elif i.op == "jmp":
-                dst.append(f"jmp .L{labels.index(i.arg)}")
+                dst.append(f"jmp .L{labels.index(i.arg1)}")
             elif i.op == "+":
-                dst.append(f"add {v}, {i.arg}")
+                dst.append(f"add {v}, {i.arg1}")
             elif i.op == "-":
-                dst.append(f"sub {v}, {i.arg}")
+                dst.append(f"sub {v}, {i.arg1}")
             elif i.op == ">":
-                dst.append(f"add edx, {i.arg}")
+                dst.append(f"add edx, {i.arg1}")
             elif i.op == "<":
-                dst.append(f"sub edx, {i.arg}")
+                dst.append(f"sub edx, {i.arg1}")
             elif i.op == ",":
                 dst.append("push edx")
                 dst.append("call bf_getc")

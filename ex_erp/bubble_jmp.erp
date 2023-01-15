@@ -1,3 +1,4 @@
+( -rs3 -ds10 )
 import erp_base
 
 ary a 224

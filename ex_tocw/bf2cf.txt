@@ -1,0 +1,78 @@
+# CompressedFuck encoder
+start/7:
+    '+': 0b000 b3; >stat1
+    '-': 0b001 b3; >stat1
+    '>': 0b010 b3; >stat1
+    '<': 0b011 b3; >stat1
+    '.': 0b100 b3; >stat1
+    ',': 0b101 b3; >stat1
+    '[': 0b110 b3; >stat1
+    ']': 0b111 b3; >stat1
+    127: 0 b4; exit
+    _: ; continue
+stat1/7:
+    '+': 0b000 b3; >stat2
+    '-': 0b001 b3; >stat2
+    '>': 0b010 b3; >stat2
+    '<': 0b011 b3; >stat2
+    '.': 0b100 b3; >stat2
+    ',': 0b101 b3; >stat2
+    '[': 0b110 b3; >stat2
+    ']': 0b111 b3; >stat2
+    127: 0 b1; exit
+    _: ; continue
+stat2/7:
+    '+': 0b000 b3; >stat3
+    '-': 0b001 b3; >stat3
+    '>': 0b010 b3; >stat3
+    '<': 0b011 b3; >stat3
+    '.': 0b100 b3; >stat3
+    ',': 0b101 b3; >stat3
+    '[': 0b110 b3; >stat3
+    ']': 0b111 b3; >stat3
+    127: 0 b5; exit
+    _: ; continue
+stat3/7:
+    '+': 0b000 b3; >stat4
+    '-': 0b001 b3; >stat4
+    '>': 0b010 b3; >stat4
+    '<': 0b011 b3; >stat4
+    '.': 0b100 b3; >stat4
+    ',': 0b101 b3; >stat4
+    '[': 0b110 b3; >stat4
+    ']': 0b111 b3; >stat4
+    127: 0 b2; exit
+    _: ; continue
+stat4/7:
+    '+': 0b000 b3; >stat5
+    '-': 0b001 b3; >stat5
+    '>': 0b010 b3; >stat5
+    '<': 0b011 b3; >stat5
+    '.': 0b100 b3; >stat5
+    ',': 0b101 b3; >stat5
+    '[': 0b110 b3; >stat5
+    ']': 0b111 b3; >stat5
+    127: 0 b6; exit
+    _: ; continue
+stat5/7:
+    '+': 0b000 b3; >stat6
+    '-': 0b001 b3; >stat6
+    '>': 0b010 b3; >stat6
+    '<': 0b011 b3; >stat6
+    '.': 0b100 b3; >stat6
+    ',': 0b101 b3; >stat6
+    '[': 0b110 b3; >stat6
+    ']': 0b111 b3; >stat6
+    127: 0 b3; exit
+    _: ; continue
+stat6/7:
+    '+': 0b000 b3; >start
+    '-': 0b001 b3; >start
+    '>': 0b010 b3; >start
+    '<': 0b011 b3; >start
+    '.': 0b100 b3; >start
+    ',': 0b101 b3; >start
+    '[': 0b110 b3; >start
+    ']': 0b111 b3; >start
+    127: ; exit
+    _: ; continue

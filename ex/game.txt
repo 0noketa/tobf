@@ -1,0 +1,32 @@
+
+# for BrainFuckConsole74
+# use -no_tmp and append !
+
+# video memory
+loadas scr fastmem 256
+
+loadas v vars  _ __  x y c  tmp_pos
+tmp v:_ v:__
+loadas util code mod_util
+loadas scr2 slowmem 256
+
+
+set 16 v:x
+while v:x
+    dec v:x
+
+    copy v:x v:y v:c
+
+    setpx v:x v:y v:c
+endwhile v:x
+
+moveadd scr2 scr
+
+:setpx x y c
+    util:@mul_const 16 y  v:tmp_pos
+    copyadd x v:tmp_pos
+
+    scr2:@w_move c v:tmp_pos
+
+
+end
