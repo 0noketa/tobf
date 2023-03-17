@@ -89,7 +89,8 @@ class Abstract2DBrainfuck:
     SYMS_ROTZ_L = []
     SYMS_ROTNZ_R = []
     SYMS_ROTNZ_L = []
-    SYMS_ROTZNZ_R_L = []
+    SYMS_ROTZ_R_L = []
+    SYMS_ROTNZ_R_L = []
     SYMS_BF_BRACKETS = []
     SYMS_SKIP = [] # skip next
     SYMS_SKIPZ = [] # if zero
@@ -103,6 +104,7 @@ class Abstract2DBrainfuck:
     SYMS_GET = []
     # instructions with other functions
     INS_TBL: Dict[str, Callable[[LoaderState], LoaderState]] = {}
+    INITIAL_DIR = (1, 0)
     DEFAULT_MEM_WIDTH = -1 # if not -1, uses 2D memory
 
     def __init__(self, source: str = None, argv: List[str] = []) -> None:
@@ -177,6 +179,7 @@ class Abstract2DBrainfuck:
 
         return (x + dx, y + dy)
 
+    @classmethod
     def rotate_dir(self, dx, dy, clockwise=True) -> Tuple[int, int]:
         if dx == 1 if clockwise else dx == -1:
             return (0, 1)
@@ -201,8 +204,7 @@ class Abstract2DBrainfuck:
         code = []
         stk = []
         x, y = self.find_entry_point()
-        dx = 1
-        dy = 0
+        dx, dy = type(self).INITIAL_DIR
 
         while len(stk) > 0 or self.is_valid_pos(x, y):
             onexit = False
@@ -346,7 +348,18 @@ class Abstract2DBrainfuck:
 
                 dx = dx2
                 dy = dy2
-            elif c in cls.SYMS_ROTZNZ_R_L:
+            elif c in cls.SYMS_ROTZ_R_L:
+                dx2, dy2 = self.rotate_dir(dx, dy, False)
+                dx3, dy3 = self.rotate_dir(dx, dy)
+
+                stubs.append(len(code))
+                stk.append((x + dx2, y + dy2, dx2, dy2))
+
+                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+
+                dx = dx3
+                dy = dy3
+            elif c in cls.SYMS_ROTNZ_R_L:
                 dx2, dy2 = self.rotate_dir(dx, dy)
                 dx3, dy3 = self.rotate_dir(dx, dy, False)
 
@@ -393,6 +406,8 @@ class Abstract2DBrainfuck:
             x += dx
             y += dy
             lbl += 1
+
+        code.append(IntermediateInstruction(lbl, "", 0, 0))
 
         return code
 
@@ -464,7 +479,7 @@ class IntermediateExtension:
 class IntermediateCompiler:
     NAME = ""
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
         self.src = src
         self.mem_size = mem_size
         self.ex = extension
@@ -479,7 +494,9 @@ class IntermediateCompiler:
                 sys.stderr.write(f"label {i} does not exist.\n")
 
         self.update_labels()
-        self.optimize()
+    
+        if optm > 0:
+            self.optimize()
 
     def get_extension_initializer(self, stat: CompilerState) -> List[str]:
         dst = []
@@ -957,8 +974,8 @@ class IntermediateCompiler:
 class IntermediateToText(IntermediateCompiler):
     NAME = "Abstract2DBrainfuck IL assembly"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def compile(self) -> List[str]:
         dst = []
@@ -972,8 +989,8 @@ class IntermediateToText(IntermediateCompiler):
 class IntermediateToC(IntermediateCompiler):
     NAME = "C"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def compile(self) -> List[str]:
         dst = f"""
@@ -1090,8 +1107,8 @@ class IntermediateToX86(IntermediateCompiler):
     """uses NASM"""
     NAME = "x86"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def compile(self) -> List[str]:
         dst = """
@@ -1193,8 +1210,8 @@ mov edx, bf_data
 class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
     NAME = "BrainfuckAsmCompiler"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def compile(self) -> List[str]:
         dst = ["mov $1, 0"]
@@ -1250,8 +1267,8 @@ class IntermediateToBrainfuckAsmCompiler(IntermediateCompiler):
 class IntermediateToAsm2bf(IntermediateCompiler):
     NAME = "asm2bf"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
         self.output_prog_name = "atdbf"
         self.output_prog_base_addr = 0
 
@@ -1317,8 +1334,8 @@ class IntermediateToAsm2bf(IntermediateCompiler):
 class IntermediateToElvmIr(IntermediateCompiler):
     NAME = "ELVM IR"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def compile(self) -> List[str]:
         dst = ["mov B, 0"]
@@ -1374,8 +1391,8 @@ class IntermediateToElvmIr(IntermediateCompiler):
 class IntermediateToCASL2(IntermediateCompiler):
     NAME = "CASL2"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def make_cas(self, lbl, op, args):
         return f"{lbl:10}{op:18}{args}"
@@ -1529,8 +1546,30 @@ OBUF      DS      128
 class IntermediateToPATH(IntermediateCompiler):
     NAME = "PATH"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
+
+    def is_safe_idx(self, dst: List[str], dst_idx: int, idx: int) -> bool:
+        """safe index to inject '!'"""
+
+        it = dst[dst_idx]
+
+        if len(it) > idx:
+            if it[idx] in "{}+-,.<>v^\\/":
+                return False
+            if len(it) > 2 and (it[idx - 1] in "{}+-,.<>v^\\/!"):
+                return False
+            if len(it) > idx + 1 and (it[idx + 1] in "{}+-,.<>v^\\/!"):
+                return False
+
+        if dst_idx > 1:
+            it = dst[dst_idx - 1]
+
+            if len(it) > idx and (it[idx] in "{}+-,.<>v^\\/!"):
+                return False
+
+        return True
+
 
     def compile(self) -> List[str]:
         labels = self.get_used_labels()
@@ -1543,40 +1582,63 @@ class IntermediateToPATH(IntermediateCompiler):
         dst.extend(self.get_extension_initializer(stat))
 
         current_label = -1
+        def label_cols(lbl: int) -> int:
+            return (lbl // 2) * 4 + lbl % 2
 
         for i in self.src:
             if i.lbl != -1:
                 current_label = labels.index(i.lbl)
-                dst.append("!")
-                dst.append("/ " + " " * (current_label * 3) + f"/!\\ label {current_label}")
-            
+                current_label_sir = "/ " + " " * label_cols(current_label) + f"/!\\ label {current_label}"
+
+                pos = current_label_sir.index("!")
+                if (len(dst) > 0 and dst[-1].startswith(" ") and len(dst[-1]) <= pos
+                        and (len(dst) <= 1 or len(dst[-2]) < pos)):
+                    dst[-1] = "!" + dst[-1][1:]
+                else:
+                    dst.append("!")                
+                dst.append(current_label_sir)
+
             if i.op == "jz":
                 dst_label = labels.index(i.arg1)
                 if current_label < dst_label:
-                    dst.append("  " + " " * dst_label * 3 + "!")
-                    dst.append("\\v" + " " * dst_label * 3 + f"\\ jz {dst_label}")
-                    dst.append("//" + " " * dst_label * 3 + "!")
+                    dst.append("  " + " " * label_cols(dst_label) + "!")
+                    dst.append("\\v" + " " * label_cols(dst_label) + f"\\ jz {dst_label}")
+                    dst.append("//" + " " * label_cols(dst_label) + "!")
                 else:
-                    dst.append("  " + " " * dst_label * 3 + "  !")
-                    dst.append("\\v" + " " * dst_label * 3 + f"  / jz {dst_label}")
-                    dst.append("//" + " " * dst_label * 3 + "  !")
+                    dst.append("  " + " " * label_cols(dst_label) + "  !")
+                    dst.append("\\v" + " " * label_cols(dst_label) + f"  / jz {dst_label}")
+                    dst.append("//" + " " * label_cols(dst_label) + "  !")
+                
+                if len(dst) > 3:
+                    pos = dst[-3].index("!")
+                    if self.is_safe_idx(dst, len(dst) - 4, pos):
+                        dst[-3] = dst[-4][:pos].ljust(pos) + "!" + dst[-4][pos + 1:]
+                        dst.pop(-4)
             elif i.op == "jmp":
                 dst_label = labels.index(i.arg1)
                 if current_label < dst_label:
-                    dst.append("  " + " " * dst_label * 3 + "!")
-                    dst.append("\\ " + " " * dst_label * 3 + f"\\ jmp {dst_label}")
-                    dst.append("  " + " " * dst_label * 3 + "!")
+                    dst.append("  " + " " * label_cols(dst_label) + "!")
+                    dst.append("\\ " + " " * label_cols(dst_label) + f"\\ jmp {dst_label}")
+                    dst.append("  " + " " * label_cols(dst_label) + "!")
                 else:
-                    dst.append("  " + " " * dst_label * 3 + "  !")
-                    dst.append("\\ " + " " * dst_label * 3 + f"  / jmp {dst_label}")
-                    dst.append("  " + " " * dst_label * 3 + "  !")
+                    dst.append("  " + " " * label_cols(dst_label) + "  !")
+                    dst.append("\\ " + " " * label_cols(dst_label) + f"  / jmp {dst_label}")
+                    dst.append("  " + " " * label_cols(dst_label) + "  !")
+
+                if len(dst) > 3:
+                    pos = dst[-3].index("!")
+                    if self.is_safe_idx(dst, len(dst) - 4, pos):
+                        dst[-3] = dst[-4][:pos].ljust(pos) + "!" + dst[-4][pos + 1:]
+                        dst.pop(-4)
             elif i.op in ["+", "-", ",", "."]:
                 for _ in range(i.arg1):
                     dst.append(f"{i.op}")
             elif i.op == ">":
-                dst.append("}")
+                for _ in range(i.arg1):
+                    dst.append("}")
             elif i.op == "<":
-                dst.append("{")
+                for _ in range(i.arg1):
+                    dst.append("{")
             elif i.op == "assign":
                 dst.append("v")
                 dst.append("-")
@@ -1584,7 +1646,7 @@ class IntermediateToPATH(IntermediateCompiler):
                 dst.append(" ")
                 dst.append("^")
                 for _ in range(i.arg1):
-                    dst.append(f"{i.op}")
+                    dst.append("+")
             elif i.op == "exit":
                 stat = CompilerState(labels)
                 dst.extend(self.get_extension_finalizer(stat))
@@ -1604,8 +1666,8 @@ class IntermediateToPATH(IntermediateCompiler):
 class IntermediateToEnigma2D(IntermediateCompiler):
     NAME = "Enigma-2D"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def new_code_line(self, labels, lbl_idx=-1):
         if lbl_idx == -1:
@@ -1706,8 +1768,8 @@ class IntermediateToEnigma2D(IntermediateCompiler):
 class IntermediateToGeneric2DBrainfuck(IntermediateToEnigma2D):
     NAME = "Generic 2D Brainfuck"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def from_enigma2d(self, s):
         s = s.replace("l", " ").replace("r", " ").replace("u", " ").replace("d", " ")
@@ -1723,8 +1785,8 @@ class IntermediateToGeneric2DBrainfuck(IntermediateToEnigma2D):
 class IntermediateToErp(IntermediateCompiler):
     NAME = "erp"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
         if self.mem_size > 256:
             self.mem_size = 256
@@ -1801,8 +1863,8 @@ class IntermediateToErp(IntermediateCompiler):
 class IntermediateToBrainfuck(IntermediateCompiler):
     NAME = "Brainfuck"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None, n_args=0, n_results=0):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None, n_args=0, n_results=0):
+        super().__init__(src, mem_size, optm, extension)
 
         self.n_args = n_args
         self.n_results = n_results
@@ -1976,8 +2038,8 @@ class IntermediateToBrainfuck(IntermediateCompiler):
 class IntermediateInterpreter(IntermediateCompiler):
     NAME = "interpreter"
 
-    def __init__(self, src: List[IntermediateInstruction], mem_size: int, extension: IntermediateExtension = None):
-        super().__init__(src, mem_size, extension)
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
 
     def compile(self) -> List[str]:
         if self.is_register_based():
@@ -2065,6 +2127,7 @@ def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
     import io
 
     lang = "erp"
+    optm = 1
     file_name = ""
     mem_size = 65536
 
@@ -2088,6 +2151,9 @@ def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
         if arg == "-disasm":
             lang = "disasm"
 
+        if arg == "-O0":
+            optm = 0
+
         if arg in ["-?", "-h", "-help", "--help"]:
             print(f"""{loader.NAME} to 1D language (or flattened 2D language) compiler
 python {sys.argv[0]} [options] < src > dst
@@ -2098,6 +2164,7 @@ options:
   -tname        select target language
   -run          passes to interpreter
   -mem_size=N   select memory size
+  -O0           disable optimizer
 {loader.HELP}
 target languages:
   C
@@ -2125,7 +2192,7 @@ target languages:
             src = "".join(f.readlines())
 
     m2d = loader(src, sys.argv)
-    compilers = {
+    compilers: Dict[str, IntermediateCompiler] = {
         "run": IntermediateInterpreter,
         "disasm": IntermediateToText,
         "C": IntermediateToC,
@@ -2153,6 +2220,9 @@ target languages:
 
         return 1
 
+    if compilers[lang] not in [IntermediateInterpreter, IntermediateToText]:
+        lang = compilers[lang].NAME
+
     if extension is not None:
         if lang == "run" and not extension.can_invoke():
             sys.stderr.write(f"interpreter can not execute {loader.NAME}\n")
@@ -2164,7 +2234,7 @@ target languages:
             return 1
 
     code = m2d.compile_to_intermediate()
-    compiler = compilers[lang](code, mem_size, extension)
+    compiler = compilers[lang](code, mem_size, optm, extension)
 
     print("\n".join(compiler.compile()))
 

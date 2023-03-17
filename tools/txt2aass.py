@@ -34,9 +34,8 @@ def create_col_changer(from_, to_, w=None):
         ]
 
     if w is not None:
-        for i, s in enumerate(src):
-            if w > len(s):
-                src[i] += " " * w - len(s)
+        f = lambda s: s.ljust(w)
+        src = list(map(f, src))
 
     return src
 

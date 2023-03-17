@@ -124,7 +124,7 @@ class IntermediateExtension(atdbf.IntermediateExtension):
         return True
 
     def can_compile_to(self, target_language: str) -> bool:
-        return target_language in ["C", "Brainfuck", "bf", "erp", "disasm"]
+        return target_language in ["C", "Brainfuck", "erp", "disasm"]
 
     def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {

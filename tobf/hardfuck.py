@@ -1,7 +1,7 @@
 
 # ZaYen's Hardfuck(https://esolangs.org/wiki/Hardfuck) to Brainfuck compiler
 # limitation:
-#   '[' inside loop is not implemented.
+#   multiple ']' for single loop is not implemented.
 # memory layout:
 #   [0] * size  # data
 #   + [(i * 4) & 0xFF for i in range(size)]  # plane for pre-calculated results of "@"

@@ -29,7 +29,7 @@ class AroundAndAroundSleepingSound(atdbf.Abstract2DBrainfuck):
     SYMS_MIRROR_H = []
     SYMS_MIRROR_V = []
     SYMS_MIRRORNZ_R_TO_L = []
-    SYMS_ROTZNZ_R_L = ["@"]
+    SYMS_ROTNZ_R_L = ["@"]
     SYMS_BF_BRACKETS = []
     SYMS_SKIP = []
     SYMS_SKIPZ = []
