@@ -1,0 +1,17 @@
+goto(main)
+
+label(puts_all)
+    write
+    read -1 equal returnif
+    read say
+
+    goto(puts_all)
+
+label(newline)
+    10 say
+    return
+
+label(main)
+    "Hello, world!" reverse
+    gosub(puts_all)
+    gosub(newline)

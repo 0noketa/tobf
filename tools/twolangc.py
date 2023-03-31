@@ -108,10 +108,12 @@ class IntermediateExtension(atdbf.IntermediateExtension):
                 or (name in ["2l.ptr_inc", "2l.ptr_dec", "2l.inc", "2l.dec"]))
 
     def can_compile_to(self, target_language: str) -> bool:
-        return target_language in ["C", "Brainfuck", "disasm"]
+        return target_language in ["Python", "exec", "C", "Brainfuck", "disasm"]
 
     def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {
+            "exec": ["ptr = 2"],
+            "Python": ["ptr = 2"],
             "C": [
                 "static int twolang_io(int n) { if (p != &data[1]) return 0; while (n--) if (data[0] != 0) { putchar(data[0]); } else { data[0] = getchar(); } return 1; }",
                 "#define twolang_inc(n) { if (!twolang_io(n)) *p += n; }",
@@ -126,7 +128,23 @@ class IntermediateExtension(atdbf.IntermediateExtension):
         return dst[target_language] if target_language in dst.keys() else []
 
     def compile_instruction(self, target_language: str, ins: atdbf.IntermediateInstruction, stat: atdbf.CompilerState):
+        py_io = [
+            f"      if ptr == 1:",
+            f"        for _ in range({ins.arg1}):",
+            f"          if mem[0] == 0:",
+            f"            mem[0] = getc()",
+            f"          else:",
+            f"            putc(mem[0])",
+            f"      else:",
+        ]
         templates_all = {
+            "exec": None,
+            "Python": {
+                "2l.ptr_inc": [f"      ptr += {ins.arg1}"],
+                "2l.ptr_dec": [f"      ptr -= {ins.arg1}"],
+                "2l.inc": py_io + [f"        mem[ptr] = (mem[ptr] + {ins.arg1}) & CELL_MASK"],
+                "2l.dec": py_io + [f"        mem[ptr] = (mem[ptr] - {ins.arg1}) & CELL_MASK"]
+            },
             "C": {
                 "2l.ptr_inc": [
                     f"ptr_inc({ins.arg1})"
@@ -198,6 +216,8 @@ class IntermediateExtension(atdbf.IntermediateExtension):
             }
         }
 
+        templates_all["exec"] = templates_all["Python"]
+
         templates = templates_all[target_language] if target_language in templates_all.keys() else {}
 
         return templates[ins.op] if ins.op in templates.keys() else []
@@ -217,10 +237,11 @@ class IntermediateExtension(atdbf.IntermediateExtension):
             stat.ptr = (stat.ptr - ins.arg1) % len(stat.data)
         elif ins.op in ["2l.inc", "2l.dec"]:
             if stat.ptr == 1:
-                if stat.data[0] == 0:
-                    stat.data[0] = ord(sys.stdin.read(ins.arg1)[-1])
-                else:
-                    sys.stdout.write(chr(stat.data[0]) * ins.arg1)
+                for _ in range(ins.arg1): 
+                    if stat.data[0] == 0:
+                        stat.data[0] = ord(sys.stdin.read(1))
+                    else:
+                        sys.stdout.write(chr(stat.data[0]))
             else:
                 if ins.op == "2l.inc":
                     stat.data[stat.ptr] = (stat.data[stat.ptr] + ins.arg1) & 0xFF

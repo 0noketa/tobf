@@ -133,6 +133,11 @@ compiler target languages are only C and Brainfuck.
 Clockwise compiler/interpreter.  
 compiler target languages are only C.
 
+### tools/twolangc.py
+
+2L compiler/interpreter (stub).  
+compiler target languages are only C.
+
 ---
 
 ## standalone programs
@@ -160,3 +165,8 @@ this program gernerates "Around and around, sleeping sound" program that generat
 ### tools/tocw.py
 
 compiler of high-level language for Clockwise.
+
+### tools/echolangc.py
+
+[EchoLang](https://esolangs.org/wiki/EchoLang) to Python compiler and executor(works as interpreter).  
+every undefined part may be incorrect that will be changed.

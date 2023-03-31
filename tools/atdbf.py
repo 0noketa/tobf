@@ -986,6 +986,98 @@ class IntermediateToText(IntermediateCompiler):
         return dst
 
 
+class IntermediateToPython(IntermediateCompiler):
+    NAME = "Python"
+
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
+
+    def compile(self) -> List[str]:
+        dst = [
+            f"mem = [0 for _ in range({self.mem_size})]",
+            "ptr = 0"
+        ]
+        if self.is_register_based():
+            for i in range(self.n_ex_registers()):
+                dst.append(f"r{i} = 0")
+            for i in range(self.n_hidden_ex_registers()):
+                dst.append(f"h{i} = 0")
+
+        labels = self.get_used_labels()
+
+        stat = CompilerState(labels)
+        dst.extend(self.get_extension_initializer(stat))
+
+        dst.extend([
+            "def mainloop(getc, putc, entry=-1, CELL_MASK=0xFF):",
+            "  global mem, ptr",
+            "  ip = entry",
+            f"  while ip < {len(labels)}:",
+            "    if ip == -1:"
+        ])
+
+        for i in self.src:
+            if i.lbl != -1:
+                dst.extend([
+                    "      ip += 1",
+                    f"    if ip == {labels.index(i.lbl)}:"
+                ])
+
+            if self.is_register_based():
+                val = f"r{i.arg0}"
+            else:
+                val = "mem[ptr]"
+
+            if i.op == "jz":
+                dst.extend([
+                    f"      if {val} == 0:",
+                    f"        ip = {labels.index(i.arg1)}",
+                    "        continue"
+                ])
+            elif i.op == "jmp":
+                dst.extend([
+                    f"      ip = {labels.index(i.arg1)}",
+                    "      continue"
+                ])
+            elif i.op == "+":
+                dst.append(f"      {val} = ({val} + {i.arg1}) & CELL_MASK")
+            elif i.op == "-":
+                dst.append(f"      {val} = ({val} - {i.arg1}) & CELL_MASK")
+            elif i.op == ">":
+                dst.append(f"      ptr += {i.arg1}")
+            elif i.op == "<":
+                dst.append(f"      ptr -= {i.arg1}")
+            elif i.op == ",":
+                dst.append(f"      {val} = getc()")
+            elif i.op == ".":
+                dst.append(f"      putc({val})")
+            elif i.op == "assign":
+                dst.append(f"      {val} = {i.arg1}")
+            elif i.op == "exit":
+                dst.extend([
+                    f"      ip = {len(labels) + 1}",
+                    "      continue"
+                ])
+            elif self.is_extension(i.op):
+                stat = CompilerState(labels)
+                dst.extend(self.compile_extension(i, stat))
+
+        dst.extend([
+            "      ip += 1",
+            "def main():",
+            "  import sys",
+            "  def getc():",
+            "    c = sys.stdin.read(1)",
+            "    return ord(c) if len(c) else 0xFF",
+            "  putc = (lambda c: sys.stdout.write(chr(c)))",
+            "  mainloop(getc=getc, putc=putc)",
+            'if __name__ == "__main__":',
+            "  main()"
+        ])
+
+        return dst
+
+
 class IntermediateToC(IntermediateCompiler):
     NAME = "C"
 
@@ -1853,7 +1945,7 @@ class IntermediateToErp(IntermediateCompiler):
                 dst.append("'.Lexit jmp")
             elif self.is_extension(v.op):
                 stat = CompilerState(labels)
-                dst.extend(self.compile_extension(v.op, v.arg1, stat))
+                dst.extend(self.compile_extension(v, stat))
 
         dst.append(": .Lexit")
         dst.append(";")
@@ -2121,12 +2213,28 @@ class IntermediateInterpreter(IntermediateCompiler):
 
         return []
 
+class IntermediateExecutor(IntermediateToPython):
+    NAME = "exec"
+
+    def __init__(self, src: List[IntermediateInstruction], mem_size: int, optm = 1, extension: IntermediateExtension = None):
+        super().__init__(src, mem_size, optm, extension)
+
+    def compile(self) -> List[str]:
+        src = super().compile()
+
+        src.extend([
+            "main()"
+        ])
+
+        exec("\n".join(src), { "sys": sys })
+
+        return []
 
 def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
     import sys
     import io
 
-    lang = "erp"
+    lang = "run"
     optm = 1
     file_name = ""
     mem_size = 65536
@@ -2148,6 +2256,9 @@ def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
         if arg == "-run":
             lang = "run"
 
+        if arg == "-exec":
+            lang = "exec"
+
         if arg == "-disasm":
             lang = "disasm"
 
@@ -2163,12 +2274,14 @@ options:
   -lang=name    select target language
   -tname        select target language
   -run          passes to interpreter
+  -exec         passes compiled code to Python interpreter
   -mem_size=N   select memory size
   -O0           disable optimizer
 {loader.HELP}
 target languages:
+  Python(py)
   C
-  Brainfuck     labels should be fewer than 253
+  Brainfuck(bf) labels should be fewer than 253
   Generic2DBrainfuck(2b)
                 Generic 2D Brainfuck
   Enigma2D      Enigma-2D
@@ -2194,7 +2307,10 @@ target languages:
     m2d = loader(src, sys.argv)
     compilers: Dict[str, IntermediateCompiler] = {
         "run": IntermediateInterpreter,
+        "exec": IntermediateExecutor,
         "disasm": IntermediateToText,
+        "py": IntermediateToPython,
+        "Python": IntermediateToPython,
         "C": IntermediateToC,
         "c": IntermediateToC,
         "Brainfuck": IntermediateToBrainfuck,
