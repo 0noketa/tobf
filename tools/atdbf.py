@@ -82,6 +82,8 @@ class Abstract2DBrainfuck:
     SYMS_MIRROR_R_TO_L = []  # L<->R U<->D 
     SYMS_MIRROR_H = [] # L<->R 
     SYMS_MIRROR_V = [] # U<->D
+    SYMS_MIRRORNZ_R_TO_U = []
+    SYMS_MIRRORNZ_R_TO_D = []
     SYMS_MIRRORNZ_R_TO_L = []
     SYMS_ROT_R = []
     SYMS_ROT_L = []
@@ -111,12 +113,14 @@ class Abstract2DBrainfuck:
         self.width = 0
         self.height = 0
         self.argv = argv
+        self.source = []
 
         if type(self).DEFAULT_MEM_WIDTH != -1:
             self.data_width = 32
 
         if source is not None:
             self.load_source(source)
+
 
     def load_source(self, s: str):
         ss = s.split("\n")
@@ -387,6 +391,20 @@ class Abstract2DBrainfuck:
 
                 stubs.append(len(code))
                 code.append(IntermediateInstruction(lbl, "jmp", 0, -1))
+            elif c in cls.SYMS_MIRRORNZ_R_TO_U:
+                stubs.append(len(code))
+                stk.append((x + dx, y + dy, dx, dy))
+
+                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+
+                dx, dy = -dy, -dx
+            elif c in cls.SYMS_MIRRORNZ_R_TO_D:
+                stubs.append(len(code))
+                stk.append((x + dx, y + dy, dx, dy))
+
+                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+
+                dx, dy = dy, dx
             elif c in cls.SYMS_MIRRORNZ_R_TO_L:
                 stubs.append(len(code))
                 stk.append((x + dx, y + dy, dx, dy))
@@ -483,6 +501,7 @@ class IntermediateCompiler:
         self.src = src
         self.mem_size = mem_size
         self.ex = extension
+        self.eof = 255
 
         self.known_ins = []
 
@@ -687,14 +706,14 @@ class IntermediateCompiler:
         if self.remove_conditional_jump_by_const():
             self.update_labels()
 
-            if type(self).NAME != "interpreter":
+            if type(self).NAME not in ["interpreter",]:
                 if self.remove_conditional_jump_by_const():
                     self.update_labels()
 
             if self.remove_nop():
                 self.update_labels()
         
-        if type(self).NAME != "interpreter":
+        if type(self).NAME not in ["interpreter", "exec"]:
             self.optimize0()
             self.update_labels()
 
@@ -875,23 +894,25 @@ class IntermediateCompiler:
             #   x: jmp z
             #   y: jmp z
             if self.is_instruction_for_jump(v.op):
-                j = i
-                v2 = self.src[i]
-                vs = set([v2])
-                v3 = self.src[v2.arg1]
-                while v3.op == v.op and v3.arg0 == v.arg0:
-                    j = v2.arg1
+                v2 = self.src[v.arg1]
+                vs = [v]
 
-                    if v3 in vs:
-                        break
+                while v2.op == "jmp" and v2 not in vs:
+                    v = v2
 
-                    v2 = v3
-                    vs.add(v2)
-                    v3 = self.src[v2.arg1]
+                    vs.append(v2)
+                    v2 = self.src[v.arg1]
+    
+                # cyclic
+                if v2 in vs:
+                    dst = len(self.src) - 1
+                else:
+                    dst = vs[-1].arg1
 
-                self.src[i] = IntermediateInstruction(v.lbl, v.op, v.arg0, v2.arg1)
+                for v in vs:
+                    v.arg1 = dst
 
-                if i != j:
+                if len(vs) > 1:
                     optimized = True
 
             # from:
@@ -1063,12 +1084,13 @@ class IntermediateToPython(IntermediateCompiler):
                 dst.extend(self.compile_extension(i, stat))
 
         dst.extend([
-            "      ip += 1",
+            "      pass",
+            "    ip += 1",
             "def main():",
             "  import sys",
             "  def getc():",
             "    c = sys.stdin.read(1)",
-            "    return ord(c) if len(c) else 0xFF",
+            f"    return ord(c) if len(c) else {self.eof}",
             "  putc = (lambda c: sys.stdout.write(chr(c)))",
             "  mainloop(getc=getc, putc=putc)",
             'if __name__ == "__main__":',
@@ -1175,7 +1197,10 @@ static uint8_t data[DATA_SIZE], *p = data;
             elif i.op == "<":
                 dst.append(f'ptr_dec({i.arg1})')
             elif i.op == ",":
-                dst.append(f"{v} = getchar();")
+                if self.eof != 255:
+                    dst.append(f"{{ int atdbc_tmp_c = getchar(); {v} = atdbc_tmp_ == -1 ? {self.eof} : atdbc_tmp_; }}")
+                else:
+                    dst.append(f"{v} = getchar();")
             elif i.op == ".":
                 dst.append(f"putchar({v});")
             elif i.op == "assign":
@@ -2189,7 +2214,7 @@ class IntermediateInterpreter(IntermediateCompiler):
                 ptr = (ptr - v.arg1) % data_size
             elif v.op == ",":
                 s = sys.stdin.read(1)
-                data[ptr] = ord(s) if len(s) else 255
+                data[ptr] = ord(s) if len(s) else self.eof
             elif v.op == ".":
                 sys.stdout.write(chr(data[ptr]))
                 sys.stdout.flush()
@@ -2234,7 +2259,7 @@ def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
     import sys
     import io
 
-    lang = "run"
+    lang = "2b"
     optm = 1
     file_name = ""
     mem_size = 65536
@@ -2277,6 +2302,7 @@ options:
   -exec         passes compiled code to Python interpreter
   -mem_size=N   select memory size
   -O0           disable optimizer
+  -eof=N        select EOF
 {loader.HELP}
 target languages:
   Python(py)
@@ -2313,9 +2339,11 @@ target languages:
         "Python": IntermediateToPython,
         "C": IntermediateToC,
         "c": IntermediateToC,
+        "BrainFuck": IntermediateToBrainfuck,
         "Brainfuck": IntermediateToBrainfuck,
         "bf": IntermediateToBrainfuck,
         "Enigma2D": IntermediateToEnigma2D,
+        "Generic 2D Brainfuck": IntermediateToGeneric2DBrainfuck,
         "Generic2DBrainfuck": IntermediateToGeneric2DBrainfuck,
         "2b": IntermediateToGeneric2DBrainfuck,
         "PATH": IntermediateToPATH,
