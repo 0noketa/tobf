@@ -194,7 +194,7 @@ class MouseInAMaze(atdbf.Abstract2DBrainfuck):
         for y, s in enumerate(self.source):
             for x, c in enumerate(s):
                 if (c == self.mouse if self.mouse is not None
-                        else c.isdigit()):
+                        else c.isdigit() and c != "0" and int(c) not in mice.keys()):
                     mice[int(c)] = (x, y)
 
         if len(mice.keys()):
