@@ -12,18 +12,19 @@ src:@enable_skip
 
 # cond=0
 :load_char
-    input c
+    input d
 
-    # EOF?
-    inc c
-    bool c d
-    dec c
-
+    # 0?
     if d
-        dec d
-        set '! -c +d
-        bool c +cond
-        moveadd d c
+        # EOF?
+        inc d
+        if d
+            dec d
+
+            set '! +c -d
+            bool d +cond
+            moveadd d c
+        endif d
     endif d
 
 :load_src
@@ -33,20 +34,18 @@ src:@enable_skip
     while cond
         dec cond
 
-        copy c d
+        copyadd c d
         ifnotin d '> '< '+ '- '. ', '[ ']
             clear c
         endifnotin d '> '< '+ '- '. ', '[ ']
 
-        move c d
-        if d
+        if c
             src:@ptr_inc 0
-            src:@w_move d 0
-        endif d
+            src:@w_move c 0
+        endif c
 
         load_char
     endwhile cond
-    clear c
 
     src:@ptr_clear 0
 

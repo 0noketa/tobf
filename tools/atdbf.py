@@ -670,7 +670,7 @@ class IntermediateCompiler:
         """
     
         old_size = len(self.src)
-        i = old_size
+        i = old_size - 1
         while i > 0:
             i -= 1
             v = self.src[i]
@@ -893,7 +893,7 @@ class IntermediateCompiler:
             #   jmp z
             #   x: jmp z
             #   y: jmp z
-            if self.is_instruction_for_jump(v.op):
+            if self.is_instruction_for_jump(v.op) and v.arg1 < len(self.src):
                 v2 = self.src[v.arg1]
                 vs = [v]
 

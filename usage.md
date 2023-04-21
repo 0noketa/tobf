@@ -55,7 +55,7 @@ almost abandoned stub.
 
 ## atdbf and its front-end
 
-compiler/interpreter for 2D Brainfuck (without something such as self-modification) languages (currently 10 languages are implemented).  
+compiler/interpreter for 2D Brainfuck (without something such as self-modification) languages (currently 12 languages are implemented).  
 this implementation uses 1D intermediate language for fast and short output.  
 
 every program requires tools/atdbf.py .  
@@ -67,6 +67,7 @@ python tools/pathc.py [options] src > dst
 python tools/pathc.py [options] < src > dst
 # interpreter
 python tools/pathc.py [options] -run src < input_data > output_data
+python tools/pathc.py [options] -run < src > output_data
 ```
 
 options:
@@ -137,6 +138,14 @@ compiler target languages are only C.
 
 2L compiler/interpreter (stub).  
 compiler target languages are only C.
+
+### tools/archway1c.py
+
+Archway compiler/interpreter (stub).  
+
+### tools/archway2c.py
+
+Archway2 compiler/interpreter (stub).  
 
 ---
 
