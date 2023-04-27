@@ -10,7 +10,7 @@
 #      WWW
 #     b  W
 #      WaW
-#       -
+#       ^
 #    dst:
 #      a
 #      b
@@ -33,7 +33,7 @@
 #      WKW
 #     c  W
 #      WaW
-#       -
+#       ^
 #    dst:
 #       | a
 #       | jz B
@@ -46,22 +46,17 @@
 #
 # Mice in a maze
 # https://esolangs.org/wiki/Mice_in_a_maze
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, cast
 import atdbf
 
 
-implicit_counter_clockwise = True
-
-
 def mim_wall(stat: atdbf.LoaderState):
-    global implicit_counter_clockwise
-
     stat.x -= stat.dx
     stat.y -= stat.dy
 
     dx2, dy2 = atdbf.Abstract2DBrainfuck.rotate_dir(stat.dx, stat.dy)
 
-    if implicit_counter_clockwise:
+    if stat.compiler.implicit_counter_clockwise:
         # counter clockwise
         # WWW
         #<  W
@@ -80,9 +75,7 @@ def mim_wall(stat: atdbf.LoaderState):
                 stat.stubs.append(len(stat.code))
                 stat.stk.append((stat.x + dx2 * 2, stat.y + dy2 * 2, dx2, dy2))
 
-                stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "jz", 0, -1))
-
-                stat.lbl += 1
+                stat.append_instruction("jz", 0, -1)
 
                 dx2, dy2 = -stat.dx, -stat.dy
 
@@ -93,14 +86,12 @@ def mim_wall(stat: atdbf.LoaderState):
     return stat
 
 def mim_cond_wall(stat: atdbf.LoaderState):
-    global implicit_counter_clockwise
-
     stat.x -= stat.dx
     stat.y -= stat.dy
 
     dx2, dy2 = atdbf.Abstract2DBrainfuck.rotate_dir(stat.dx, stat.dy)
 
-    if implicit_counter_clockwise:
+    if stat.compiler.implicit_counter_clockwise:
         # forward/counter clockwise
         #  ^
         # WKW
@@ -122,12 +113,11 @@ def mim_cond_wall(stat: atdbf.LoaderState):
     stat.stubs.append(len(stat.code))
     stat.stk.append((stat.x + stat.dx * 2, stat.y + stat.dy * 2, stat.dx, stat.dy))
 
-    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "jz", 0, -1))
+    stat.append_instruction("jz", 0, -1)
 
     stat.dx, stat.dy = dx2, dy2
     stat.x += stat.dx
     stat.y += stat.dy
-    stat.lbl += 1
 
     return stat
 
@@ -169,8 +159,6 @@ class MouseInAMaze(atdbf.Abstract2DBrainfuck):
     DEFAULT_MEM_WIDTH = -1
 
     def __init__(self, source: str = None, argv: List[str] = []) -> None:
-        global implicit_counter_clockwise
-
         super().__init__(source, argv)
 
         self.mouse = None
@@ -180,9 +168,11 @@ class MouseInAMaze(atdbf.Abstract2DBrainfuck):
         self.source.append("W" * self.width)
         self.height += 2
 
+        self.implicit_counter_clockwise = True
+
         for arg in argv:
             if arg == "-no_implicit_cc":
-                implicit_counter_clockwise = False
+                self.implicit_counter_clockwise = False
             if arg.startswith("-mouse="):
                 n = int(arg[7:])
 

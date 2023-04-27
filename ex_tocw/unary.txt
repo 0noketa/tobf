@@ -1,0 +1,24 @@
+# converts ascii decimal integer to unary decimal integer
+start/3:
+    0b011: ; >check_num
+    0b111: ; >check_eof
+    _: ; >pass
+check_num/4:
+    0: 0b0 b1; >start
+    1: 0b10 b2; >start
+    2: 0b110 b3; >start
+    3: 0b1110 b4; >start
+    4: 0b11110 b5; >start
+    5: 0b111110 b6; >start
+    6: 0b1111110 b7; >start
+    7: 0b11111110 b8; >start
+    8: 0b111111110 b9; >start
+    9: 0b1111111110 b10; >start
+    _: ; >start
+check_eof/4:
+    0b1111: ; >last
+    _: ; >start
+pass/4:
+    _: ; >start
+last/0:
+    _: 0 b14; exit

@@ -12,26 +12,23 @@ import atdbf
 
 
 def clockwise_push(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "clockwise_push", 0, 0))
+    stat.append_instruction("clockwise_push", 0, 0)
     stat.x += stat.dx
     stat.y += stat.dy
-    stat.lbl += 1
 
     return stat
 
 def clockwise_pop(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "clockwise_pop", 0, 0))
+    stat.append_instruction("clockwise_pop", 0, 0)
     stat.x += stat.dx
     stat.y += stat.dy
-    stat.lbl += 1
 
     return stat
 
 def clockwise_clear(stat: atdbf.LoaderState) -> atdbf.LoaderState:
-    stat.code.append(atdbf.IntermediateInstruction(stat.lbl, "assign", 0, 0))
+    stat.append_instruction("assign", 0, 0)
     stat.x += stat.dx
     stat.y += stat.dy
-    stat.lbl += 1
 
     return stat
 
@@ -93,10 +90,22 @@ class IntermediateExtension(atdbf.IntermediateExtension):
         return name in ["clockwise_push", "clockwise_pop"]
 
     def can_compile_to(self, target_language: str) -> bool:
-        return target_language in ["C", "disasm"]
+        return target_language in ["exec", "Python", "C", "disasm"]
 
     def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
+        pycode = [
+            None,
+            "  clockwise_iqueue = []",
+            "  clockwise_eof = False",
+            "  clockwise_ibuf = 0",
+            "  clockwise_obuf = 0",
+            "  clockwise_acc = 0",
+            "  clockwise_iidx = -1",
+            "  clockwise_oidx = 0",
+        ]
         dst = {
+            "exec": pycode,
+            "Python": pycode,
             "C": [
                 "#ifndef QUEUE_SIZE",
                 "#define QUEUE_SIZE 256",
@@ -112,22 +121,54 @@ class IntermediateExtension(atdbf.IntermediateExtension):
                 "#ifndef EXIT_ON_EOF",
                 "  if (ie) { r0 = ((q[qi] >> --ii) & 1); if (ii == 0) { qi = (qi + 1) % qz; ii = IO_BYTE_SIZE; } } else ",
                 "#endif",
-                "  { if (ii == 0) { if (qz < QUEUE_SIZE) ++qz; if (feof(stdin)) {",
+                "  { if (ii == 0) { if (qz < QUEUE_SIZE) ++qz; if (feof(atdbf_in)) {",
                 "#ifdef EXIT_ON_EOF",
-                "      return 0;",
+                "      return;",
                 "#else",
                 "      q[qz - 1] = 0xFF; ie = 1;",
                 "#endif",
-                "    } else q[qz - 1] = getchar(); ii = IO_BYTE_SIZE; } r0 = ((q[qz - 1] >> --ii) & 1) | (r0 & (~0 ^ 1)); }",
+                "    } else q[qz - 1] = fgetc(atdbf_in); ii = IO_BYTE_SIZE; } r0 = ((q[qz - 1] >> --ii) & 1) | (r0 & (~0 ^ 1)); }",
                 "}",
-                "void clockwise_push() { obuf = (obuf << 1) | (r0 & 1); if (++oi == IO_BYTE_SIZE) { putchar(obuf); obuf = 0; oi = 0; } }",
+                "void clockwise_push() { obuf = (obuf << 1) | (r0 & 1); if (++oi == IO_BYTE_SIZE) { fputc(obuf, atdbf_out); obuf = 0; oi = 0; } }",
                 None
             ]
         }
         return dst[target_language] if target_language in dst.keys() else []
 
     def compile_instruction(self, target_language: str, ins: atdbf.IntermediateInstruction, stat: atdbf.CompilerState):
+        pycode = {
+            "clockwise_pop":
+"""
+      if clockwise_iidx == -1:
+        if not clockwise_eof:
+          s = input_file.read(1)
+          clockwise_ibuf = ord(s[0]) if len(s) else 0xFF
+
+          if len(s) == 0:
+            clockwise_eof = True
+        else:
+          clockwise_ibuf = clockwise_iqueue.pop(0)
+
+        clockwise_iqueue.append(clockwise_ibuf)
+        clockwise_iidx = 6
+
+      r0 = ((clockwise_ibuf >> clockwise_iidx) & 1)
+      clockwise_iidx -= 1
+""".splitlines(),
+            "clockwise_push":
+"""
+      clockwise_obuf = ((clockwise_obuf << 1) | (r0 & 1)) & 0x7F
+      clockwise_oidx += 1
+
+      if clockwise_oidx == 7:
+        output_file.write(chr(clockwise_obuf))
+        clockwise_oidx = 0
+        clockwise_obuf = 0
+""".splitlines()
+        }
         templates_all = {
+            "exec": pycode,
+            "Python": pycode,
             "C": {
                 "clockwise_pop": [
                     "clockwise_pop();"
@@ -171,10 +212,10 @@ class IntermediateExtension(atdbf.IntermediateExtension):
                 self.iqueue.append(self.ibuf)
                 self.iidx = 6
 
-            stat.data[stat.ptr] = ((self.ibuf >> self.iidx) & 1)
+            stat.data[0] = ((self.ibuf >> self.iidx) & 1)
             self.iidx -= 1
         elif ins.op == "clockwise_push":
-            self.obuf = ((self.obuf << 1) | (stat.data[stat.ptr] & 1)) & 0x7F
+            self.obuf = ((self.obuf << 1) | (stat.data[0] & 1)) & 0x7F
             self.oidx += 1
 
             if self.oidx == 7:

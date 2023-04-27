@@ -47,12 +47,15 @@ class IntermediateInstruction:
 
 class LoaderState:
     def __init__(self,
+            compiler,
             source: List[str],
             code: List[IntermediateInstruction],
             lbl: int, x: int, y: int, dx: int, dy: int, 
             stubs: List[int], 
             stk: List[Tuple[int, int, int, int]]
             ) -> None:
+        self.compiler = compiler
+        self.config = {}
         self.source = source
         self.code = code
         self.lbl = lbl
@@ -65,6 +68,14 @@ class LoaderState:
 
     def get(self) -> Tuple[List[IntermediateInstruction], int, int, int, int, int, int]:
         return (self.source, self.code, self.lbl, self.x, self.y, self.dx, self.dy, self.stubs, self.stk)
+
+    def append_instruction(self, op: str, arg0: int, arg1: int):
+        """arg0: optional. any of register number, ..."""
+        self.code.append(IntermediateInstruction(len(self.code), op, arg0, arg1))
+        self.lbl += 1
+    
+    def current_label(self) -> int:
+        return len(self.code)
 
 class Abstract2DBrainfuck:
     """abstract superset of some 2D Brainfuck that has not complex features"""
@@ -194,6 +205,10 @@ class Abstract2DBrainfuck:
         if dy == -1 if clockwise else dy == 1:
             return (1, 0)
 
+    @classmethod
+    def append_to_code(self, code: List[IntermediateInstruction], op: str, arg0: int, arg1: int):
+        code.append(IntermediateInstruction(len(code), op, arg0, arg1))
+
     def compile_to_intermediate(self) -> List[IntermediateInstruction]:
         cls = type(self)
         if len(cls.SYMS_BF_BRACKETS):
@@ -215,7 +230,7 @@ class Abstract2DBrainfuck:
             lbl0 = -1
 
             if len(stk) > 0 and not self.is_valid_pos(x, y):
-                code.append(IntermediateInstruction(lbl, "exit", 0, 0))
+                self.append_to_code(code, "exit", 0, 0)
                 onexit = True
                 c = " "
             else:
@@ -223,93 +238,84 @@ class Abstract2DBrainfuck:
                 c = self.source[y][x]
 
                 if c in cls.SYMS_EXIT:
-                    code.append(IntermediateInstruction(lbl, "exit", 0, 0))
+                    self.append_to_code(code, "exit", 0, 0)
                     onexit = True
                 else:
                     lbl0 = cell_labels.get(dx, dy)
 
                     if lbl0 != -1:
-                        code.append(IntermediateInstruction(lbl, "jmp", 0, lbl0))
+                        self.append_to_code(code, "jmp", 0, lbl0)
                         onexit = True
 
             if onexit:
                 if len(stk) == 0:
                     break
 
-                lbl += 1
                 x, y, dx, dy = stk.pop()
                 branch_idx = stubs.pop()
 
                 v = code[branch_idx]
-                v.arg1 = lbl
+                v.arg1 = len(code)
 
                 continue
 
             # sys.stderr.write(f"{lbl:08}: ({x}, {y}) -> ({dx}, {dy})\n")
-            cell_labels.set(dx, dy, lbl)
+            cell_labels.set(dx, dy, len(code))
 
             if c in cls.SYMS_TURN:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
+                self.append_to_code(code, "", 0, 0)
 
-                lbl += 1
                 dx, dy = self.name_to_dir(c)
-
                 x += dx
                 y += dy
 
                 continue
             elif c in cls.SYMS_MIRROR_R_TO_U:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
-
-                lbl += 1
+                self.append_to_code(code, "", 0, 0)
 
                 dx, dy = -dy, -dx
-
                 x += dx
                 y += dy
 
                 continue
             elif c in cls.SYMS_MIRROR_R_TO_D:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
-
-                lbl += 1
+                self.append_to_code(code, "", 0, 0)
 
                 dx, dy = dy, dx
-
                 x += dx
                 y += dy
 
                 continue
             elif c in cls.SYMS_SKIP:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
+                self.append_to_code(code, "", 0, 0)
                 x += dx
                 y += dy
             elif c in cls.SYMS_PUT:
-                code.append(IntermediateInstruction(lbl, ".", 0, 1))
+                self.append_to_code(code, ".", 0, 1)
             elif c in cls.SYMS_GET:
-                code.append(IntermediateInstruction(lbl, ",", 0, 1))
+                self.append_to_code(code, ",", 0, 1)
             elif c in cls.SYMS_PTR_INC:
-                code.append(IntermediateInstruction(lbl, ">", 0, 1))
+                self.append_to_code(code, ">", 0, 1)
             elif c in cls.SYMS_PTR_DEC:
-                code.append(IntermediateInstruction(lbl, "<", 0, 1))
+                self.append_to_code(code, "<", 0, 1)
             elif c in cls.SYMS_INC:
-                code.append(IntermediateInstruction(lbl, "+", 0, 1))
+                self.append_to_code(code, "+", 0, 1)
             elif c in cls.SYMS_DEC:
-                code.append(IntermediateInstruction(lbl, "-", 0, 1))
+                self.append_to_code(code, "-", 0, 1)
             elif c in cls.SYMS_MIRROR_R_TO_L:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
+                self.append_to_code(code, "", 0, 0)
 
                 dx = -dx
                 dy = -dy
             elif c in cls.SYMS_PTR_DOWN:
-                code.append(IntermediateInstruction(lbl, ">", 0, self.data_width))
+                self.append_to_code(code, ">", 0, self.data_width)
             elif c in cls.SYMS_PTR_UP:
-                code.append(IntermediateInstruction(lbl, "<", 0, self.data_width))
+                self.append_to_code(code, "<", 0, self.data_width)
             elif c in cls.SYMS_TURNNZ:
                 stubs.append(len(code))
                 stk.append((x + dx, y + dy, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 if c == cls.SYMS_TURNNZ[0]:
                     dx, dy = (-1, 0)
@@ -328,27 +334,44 @@ class Abstract2DBrainfuck:
                 stubs.append(len(code))
                 stk.append((x3, y3, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
             elif c in cls.SYMS_ROT_L:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
+                self.append_to_code(code, "", 0, 0)
                 dx, dy = self.rotate_dir(dx, dy, clockwise=False)
             elif c in cls.SYMS_ROT_R:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
+                self.append_to_code(code, "", 0, 0)
                 dx, dy = self.rotate_dir(dx, dy)
+            elif c in cls.SYMS_ROTZ_L:
+                dx2, dy2 = self.rotate_dir(dx, dy, False)
+
+                stubs.append(len(code))
+                stk.append((x + dx2, y + dy2, dx2, dy2))
+
+                self.append_to_code(code, "jz", 0, -1)
             elif c in cls.SYMS_ROTZ_R:
                 dx2, dy2 = self.rotate_dir(dx, dy)
 
                 stubs.append(len(code))
                 stk.append((x + dx2, y + dy2, dx2, dy2))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
+            elif c in cls.SYMS_ROTNZ_L:
+                dx2, dy2 = self.rotate_dir(dx, dy, False)
+
+                stubs.append(len(code))
+                stk.append((x + dx, y + dy, dx, dy))
+
+                self.append_to_code(code, "jz", 0, -1)
+
+                dx = dx2
+                dy = dy2
             elif c in cls.SYMS_ROTNZ_R:
                 dx2, dy2 = self.rotate_dir(dx, dy)
 
                 stubs.append(len(code))
                 stk.append((x + dx, y + dy, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 dx = dx2
                 dy = dy2
@@ -359,7 +382,7 @@ class Abstract2DBrainfuck:
                 stubs.append(len(code))
                 stk.append((x + dx2, y + dy2, dx2, dy2))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 dx = dx3
                 dy = dy3
@@ -370,7 +393,7 @@ class Abstract2DBrainfuck:
                 stubs.append(len(code))
                 stk.append((x + dx2, y + dy2, dx2, dy2))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 dx = dx3
                 dy = dy3
@@ -380,52 +403,52 @@ class Abstract2DBrainfuck:
                 stubs.append(len(code))
                 stk.append((x2, y2, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
             elif c == bf_bracket_right:
                 x2, y2 = self.skip_bracket(x, y, -dx, -dy)
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, lbl + 2))
-                lbl += 1
+                self.append_to_code(code, "jz", 0, lbl + 2)
 
                 stk.append((x2 + dx * 2, y2 + dy * 2, dx, dy))
 
                 stubs.append(len(code))
-                code.append(IntermediateInstruction(lbl, "jmp", 0, -1))
+                self.append_to_code(code, "jmp", 0, -1)
             elif c in cls.SYMS_MIRRORNZ_R_TO_U:
                 stubs.append(len(code))
                 stk.append((x + dx, y + dy, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 dx, dy = -dy, -dx
             elif c in cls.SYMS_MIRRORNZ_R_TO_D:
                 stubs.append(len(code))
                 stk.append((x + dx, y + dy, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 dx, dy = dy, dx
             elif c in cls.SYMS_MIRRORNZ_R_TO_L:
                 stubs.append(len(code))
                 stk.append((x + dx, y + dy, dx, dy))
 
-                code.append(IntermediateInstruction(lbl, "jz", 0, -1))
+                self.append_to_code(code, "jz", 0, -1)
 
                 dx = -dx
                 dy = -dy
             elif c in cls.INS_TBL.keys():
-                stat = cls.INS_TBL[c](LoaderState(self.source, code, lbl, x, y, dx, dy, stubs, stk))
+                stat = cls.INS_TBL[c](LoaderState(self, self.source, code, len(code), x, y, dx, dy, stubs, stk))
                 _, code, lbl, x, y, dx, dy, stubs, stk = stat.get()
 
+                if lbl != len(code):
+                    raise Exception(f"broken extension at ({x}, {y})")
                 continue
             else:
-                code.append(IntermediateInstruction(lbl, "", 0, 0))
+                self.append_to_code(code, "", 0, 0)
 
             x += dx
             y += dy
-            lbl += 1
 
-        code.append(IntermediateInstruction(lbl, "", 0, 0))
+        self.append_to_code(code, "", 0, 0)
 
         return code
 
@@ -894,10 +917,11 @@ class IntermediateCompiler:
             #   x: jmp z
             #   y: jmp z
             if self.is_instruction_for_jump(v.op) and v.arg1 < len(self.src):
+                v0 = v
                 v2 = self.src[v.arg1]
                 vs = [v]
 
-                while v2.op == "jmp" and v2 not in vs:
+                while (v2.op == "jmp" and v2 not in vs) or (v2.op == v0.op and v2.arg0 == v0.arg0):
                     v = v2
 
                     vs.append(v2)
@@ -927,9 +951,9 @@ class IntermediateCompiler:
                 for j in range(i + 1, len(self.src)):
                     v2 = self.src[j]
 
-                    if v2.op == v.op:
+                    if v2.op == v.op and v2.arg0 == v.arg0:
                         if v2.lbl != -1:
-                            if v.arg1 != v2.arg1:
+                            if v.op != "exit" and v.arg1 != v2.arg1:
                                 break
 
                             if v.lbl == -1:
@@ -942,6 +966,23 @@ class IntermediateCompiler:
                     else:
                         break
 
+            # from:
+            #   jmp x
+            #   y
+            #   z
+            # to:
+            #   jmp x
+            #   nop
+            #   nop
+            if v.op == "jmp" or v.op == "exit":
+                for j in range(i + 1, len(self.src)):
+                    v2 = self.src[j]
+
+                    if v2.lbl != -1:
+                        break
+
+                    self.src[j] = IntermediateInstruction(-1, "", 0, 0)
+                    optimized = True
 
         j = -1
         vi = -1
@@ -951,8 +992,8 @@ class IntermediateCompiler:
                 j = i
                 vi = ins.arg0
                 v = ins.arg1
-            else:
-                if j != -1 and vi == ins.arg0 and ins.lbl == -1:
+            elif j != -1:
+                if vi == ins.arg0 and ins.lbl == -1:
                     if ins.op == "jz":
                         if v == 0:
                             ins.op = "jmp"
@@ -961,7 +1002,6 @@ class IntermediateCompiler:
                             self.src[i] = IntermediateInstruction(-1, "", 0, 0)
 
                         optimized = True                       
-                        continue
                     if ins.op == "assign":
                         v = ins.arg1
                         self.src[j].arg1 = ins.arg1
@@ -984,10 +1024,9 @@ class IntermediateCompiler:
                         optimized = True 
                         continue
 
-                if j != -1:
-                    j = -1
-                    vi = -1
-                    v = -1
+                j = -1
+                vi = -1
+                v = -1
 
 
         return optimized
@@ -1018,21 +1057,41 @@ class IntermediateToPython(IntermediateCompiler):
             f"mem = [0 for _ in range({self.mem_size})]",
             "ptr = 0"
         ]
+        global_vars = "mem, ptr"
         if self.is_register_based():
             for i in range(self.n_ex_registers()):
                 dst.append(f"r{i} = 0")
+                global_vars += f", r{i}"
             for i in range(self.n_hidden_ex_registers()):
                 dst.append(f"h{i} = 0")
+                global_vars += f", h{i}"
 
         labels = self.get_used_labels()
 
         stat = CompilerState(labels)
-        dst.extend(self.get_extension_initializer(stat))
+
+        initializer = self.get_extension_initializer(stat)
+        if None in initializer:
+            sep_idx = initializer.index(None)
+
+            dst.extend(initializer[:sep_idx])
+
+            initializer = initializer[sep_idx + 1:]
+
 
         dst.extend([
-            "def mainloop(getc, putc, entry=-1, CELL_MASK=0xFF):",
-            "  global mem, ptr",
+            "def mainloop(input_file, output_file, entry=-1, CELL_MASK=0xFF):",
+            f"  global {global_vars}",
             "  ip = entry",
+            "  def getc():",
+            "    c = input_file.read(1)",
+            f"    return ord(c) if len(c) else {self.eof}",
+            "  def putc(c):",
+            "    output_file.write(chr(c))",
+            "    output_file.flush()",
+        ])
+        dst.extend(initializer)
+        dst.extend([
             f"  while ip < {len(labels)}:",
             "    if ip == -1:"
         ])
@@ -1088,11 +1147,7 @@ class IntermediateToPython(IntermediateCompiler):
             "    ip += 1",
             "def main():",
             "  import sys",
-            "  def getc():",
-            "    c = sys.stdin.read(1)",
-            f"    return ord(c) if len(c) else {self.eof}",
-            "  putc = (lambda c: sys.stdout.write(chr(c)))",
-            "  mainloop(getc=getc, putc=putc)",
+            "  mainloop(input_file=sys.stdin, output_file=sys.stdout)",
             'if __name__ == "__main__":',
             "  main()"
         ])
@@ -1110,6 +1165,7 @@ class IntermediateToC(IntermediateCompiler):
         dst = f"""
 #include <stdio.h>
 #include <stdint.h>
+FILE *atdbf_in, *atdbf_out;
 """.split("\n")
 
         if self.is_register_based():
@@ -1154,7 +1210,13 @@ static uint8_t data[DATA_SIZE], *p = data;
 
             initializer = initializer[sep_idx + 1:]
 
-        dst.append("int main(int argc, char *argv[]) {")
+        dst.extend([
+            "int main(int argc, char *argv[]) {",
+            "atdbf_in = argc > 1 ? fopen(argv[1], \"rb\") : stdin;",
+            "atdbf_out = argc > 2 ? fopen(argv[2], \"wb\") : stdout;",
+            "if (!atdbf_in) atdbf_in = stdin;",
+            "if (!atdbf_out) atdbf_out = stdout;",
+        ])
 
         dst.extend(initializer)
 
@@ -1198,15 +1260,15 @@ static uint8_t data[DATA_SIZE], *p = data;
                 dst.append(f'ptr_dec({i.arg1})')
             elif i.op == ",":
                 if self.eof != 255:
-                    dst.append(f"{{ int atdbc_tmp_c = getchar(); {v} = atdbc_tmp_ == -1 ? {self.eof} : atdbc_tmp_; }}")
+                    dst.append(f"{{ int atdbc_tmp_c = fgetc(atdbf_in); {v} = atdbc_tmp_ == -1 ? {self.eof} : atdbc_tmp_; }}")
                 else:
-                    dst.append(f"{v} = getchar();")
+                    dst.append(f"{v} = fgetc(atdbf_in);")
             elif i.op == ".":
-                dst.append(f"putchar({v});")
+                dst.append(f"fputc({v}, atdbf_out);")
             elif i.op == "assign":
                 dst.append(f"{v} = {i.arg1};")
             elif i.op == "exit":
-                dst.append("return 0;")
+                dst.append("goto Lexit;")
             elif self.is_extension(i.op):
                 stat = CompilerState(labels)
                 dst.extend(self.compile_extension(i, stat))
@@ -1214,8 +1276,13 @@ static uint8_t data[DATA_SIZE], *p = data;
         stat = CompilerState(labels)
         dst.extend(self.get_extension_finalizer(stat))
 
-        dst.append("return 0;")
-        dst.append("}")
+        dst.extend([
+            "Lexit:",
+            "if (atdbf_in != stdin) fclose(atdbf_in);",
+            "if (atdbf_out != stdout) fclose(atdbf_out);",
+            "return 0;",
+            "}"
+        ])
 
         return dst
 
@@ -2255,6 +2322,24 @@ class IntermediateExecutor(IntermediateToPython):
 
         return []
 
+
+all_targets = [
+    "run",
+    "exec",
+    "disasm",
+    "Python",
+    "C",
+    "Brainfuck",
+    "Enigma-2D",
+    "Generic 2D Brainfuck",
+    "PATH",
+    "erp",
+    "x86",
+    "asm2bf",
+    "BrainfuckAsmCompiler",
+    "CASL2",
+]
+
 def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
     import sys
     import io
@@ -2342,6 +2427,7 @@ target languages:
         "BrainFuck": IntermediateToBrainfuck,
         "Brainfuck": IntermediateToBrainfuck,
         "bf": IntermediateToBrainfuck,
+        "Enigma-2D": IntermediateToEnigma2D,
         "Enigma2D": IntermediateToEnigma2D,
         "Generic 2D Brainfuck": IntermediateToGeneric2DBrainfuck,
         "Generic2DBrainfuck": IntermediateToGeneric2DBrainfuck,
