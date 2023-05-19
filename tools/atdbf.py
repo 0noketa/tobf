@@ -196,14 +196,7 @@ class Abstract2DBrainfuck:
 
     @classmethod
     def rotate_dir(self, dx, dy, clockwise=True) -> Tuple[int, int]:
-        if dx == 1 if clockwise else dx == -1:
-            return (0, 1)
-        if dy == 1 if clockwise else dy == -1:
-            return (-1, 0)
-        if dx == -1 if clockwise else dx == 1:
-            return (0, -1)
-        if dy == -1 if clockwise else dy == 1:
-            return (1, 0)
+        return (-dy, dx) if clockwise else (dy, -dx)
 
     @classmethod
     def append_to_code(self, code: List[IntermediateInstruction], op: str, arg0: int, arg1: int):

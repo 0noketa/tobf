@@ -132,10 +132,10 @@ class Rpn:
                 stack.append(stack.pop() - x)
             elif i == "/":
                 x = stack.pop()
-                stack.append(stack.pop() // x if x != -1 else 0)
+                stack.append(stack.pop() // x if x != 0 else 0)
             elif i == "%":
                 x = stack.pop()
-                stack.append(stack.pop() // x if x != -1 else x)
+                stack.append(stack.pop() % x if x != 0 else x)
             elif i == "lsh":
                 x = stack.pop()
                 stack.append(stack.pop() << x)
