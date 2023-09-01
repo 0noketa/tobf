@@ -1,4 +1,5 @@
 import sys
+import re
 import const_replacer
 
 
@@ -138,6 +139,50 @@ def optimize(s: str, is_partial=True, is_main=False, max_mem_size=-1) -> str:
             if s != s0:
                 replaced = True
 
+    if not is_partial:
+        ptn = """([+]*|[\-]*|)([>]+|[<]+)([+]+|[\-]+)"""
+        i = 0
+        while i < len(s):
+            if i == 0 and is_main:
+                j = i
+            elif s[i] == "]":
+                j = i + 1
+            else:
+                i += 1
+                continue
+
+            m = re.match(ptn, s[j:])
+            if m is None:
+                i += 1
+                continue
+
+            m_len = len(m.group())
+            pfx = m.group(1)
+            sel = m.group(2)
+            inc = m.group(3)
+            n = len(inc)
+
+            if n < 16 or len(sel) == 0:
+                i += 1
+                continue
+
+            unsel = "<>"[int(sel[0] == "<")] * len(sel)
+
+            x, y, z = n, 1, 0
+            for m in range(2, n):
+                for o in range(5):
+                    if n % m != o:
+                        continue
+                    if n // m + m + o < x + y + z:
+                        x, y, z = n//m, m, o
+
+            sfx = inc[0] * z
+
+            g = ("+" * x) + "[" + sel + (inc[0] * y) + unsel + "-]"+ pfx + sel + sfx 
+            s = s[:j] + g + s[j + m_len:]
+
+            i = j + len(g) - len(pfx) - len(sel) - len(sfx)
+
     if is_main:
         if max_mem_size == -1:
             mem_size = 0x10000
@@ -191,7 +236,7 @@ if __name__ == "__main__":
 
     if len(sys.argv) > 1 and sys.argv[1] in ["-?", "/?", "-help", "--help"]:
         print(f"python {sys.argv[0]} [-main] [-memN] [-O0] < input.bf > output.bf")
-        print(f"  -main  ignores initial data")
+        print(f"  -main  expects zero cleared data")
 
         sys.exit(0)
 

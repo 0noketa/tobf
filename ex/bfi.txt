@@ -9,7 +9,7 @@ loadas src mem 256
     exec
 
 :load_src
-    tmp dpt j cond p
+    tmp dpt i j cond p
 
     input c
     sub '! c
@@ -23,18 +23,16 @@ loadas src mem 256
 
         move c d
         if d
-            src:@w_move d i
+            src:@w_move d size
 
-            inc i
+            inc size
         endif d
 
         input c
         sub '! c
     endwhile c
 
-    move i size
-
-    tmp -dpt -j -cond -p
+    tmp -dpt -i -j -cond -p
 
 :case n
     copy c d
