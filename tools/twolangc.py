@@ -112,8 +112,8 @@ class IntermediateExtension(atdbf.IntermediateExtension):
 
     def get_initializer(self, target_language: str, stat: atdbf.CompilerState) -> List[str]:
         dst = {
-            "exec": ["ptr = 2"],
-            "Python": ["ptr = 2"],
+            "exec": ["  ptr = 2"],
+            "Python": ["  ptr = 2"],
             "C": [
                 "static int twolang_io(int n) { if (p != &data[1]) return 0; while (n--) if (data[0] != 0) { putchar(data[0]); } else { data[0] = getchar(); } return 1; }",
                 "#define twolang_inc(n) { if (!twolang_io(n)) *p += n; }",

@@ -81,7 +81,6 @@ class Tape:
 class ListTape(Tape):
     def __init__(self, data, input_stream=1, output_stream=0, eof=0) -> None:
         super().__init__(data, input_stream, output_stream, eof)
-        print("list")
 
     def has_address(self, i):
         return i in range(len(self.data))
@@ -99,7 +98,7 @@ class ListTape(Tape):
 
 
 
-def run(src, input_stream=1, output_stream=0, eof=0, cond=int.__ne__, data=None):
+def run(src, input_stream=1, output_stream=0, eof=0, cond=int.__eq__, data=None):
     if data is None:
         data = {}
 
@@ -168,8 +167,8 @@ if __name__ == "__main__":
         else:
             file_name = arg
 
-    if arg != "":
-        with io.open(sys.argv[1], "r") as f:
+    if file_name != "":
+        with io.open(file_name, "r") as f:
             src = f.read()
 
 

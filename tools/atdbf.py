@@ -1848,6 +1848,10 @@ class IntermediateToEnigma2D(IntermediateCompiler):
 
     def new_code_line(self, labels, lbl_idx=-1):
         if lbl_idx == -1:
+            # colmun numbers on first line
+            # if self.no_comment:
+            #     return " " * len(labels)
+            # else:
             return "".join([str(i)[-1] for i in range(len(labels))])
         else:
             return " " * lbl_idx + f"R" + " " * (len(labels) - lbl_idx - 1)
@@ -2341,6 +2345,7 @@ def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
     optm = 1
     file_name = ""
     mem_size = 65536
+    comments = 1
 
     for i, arg in enumerate(sys.argv[1:]):
         if not arg.startswith("-"):
@@ -2368,6 +2373,9 @@ def main(loader: Abstract2DBrainfuck, extension: IntermediateExtension = None):
         if arg == "-O0":
             optm = 0
 
+        if arg == "-no-comment":
+            comments = 0
+
         if arg in ["-?", "-h", "-help", "--help"]:
             print(f"""{loader.NAME} to 1D language (or flattened 2D language) compiler
 python {sys.argv[0]} [options] < src > dst
@@ -2376,8 +2384,8 @@ python {sys.argv[0]} [options] -run src < input_data > output_data
 options:
   -lang=name    select target language
   -tname        select target language
-  -run          passes to interpreter
-  -exec         passes compiled code to Python interpreter
+  -run          pass to interpreter
+  -exec         pass compiled code to Python interpreter
   -mem_size=N   select memory size
   -O0           disable optimizer
   -eof=N        select EOF
