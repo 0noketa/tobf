@@ -1,0 +1,31 @@
+SET 8
+UNTIL 0
+    SUB 1
+    UNTIL 0
+        MOV RIGHT, P
+        ADD 1
+        MOV LEFT, P
+        SUB 1
+    END
+
+    MOV P, IN
+    MOV RIGHT, P
+END
+
+SET 8
+UNTIL 0
+    MOV LEFT, P
+    MOV OUT, P
+    SET 0
+
+    MOV RIGHT, P
+    SUB 1
+    UNTIL 0
+        MOV LEFT, P
+        ADD 1
+        MOV RIGHT, P
+        SUB 1
+    END
+
+    MOV LEFT, P
+END
