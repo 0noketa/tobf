@@ -1,0 +1,9 @@
+DO 8
+    MOV P, IN
+    MOV RIGHT, P
+END
+
+DO 8
+    MOV LEFT, P
+    MOV OUT, P
+END

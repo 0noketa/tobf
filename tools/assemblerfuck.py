@@ -120,7 +120,12 @@ def compile(src):
                 if arg0 == arg1:
                     continue
                 
+                nesting_depth = len([1 for i in blocks if i == "DO"])
+
                 if arg0 == "LEFT":
+                    if with_tmp and arg1 != "IN":
+                        dst += ">" + ">>[<<+>>-]" * nesting_depth + "<<" * nesting_depth + "<" 
+
                     dst += "<<" if with_tmp else "<"
                     if arg1 == "IN":
                         dst += ","
@@ -130,6 +135,9 @@ def compile(src):
                     if arg1 == "IN":
                         dst += ","
                         dst += "<<" if with_tmp else "<"  # required?
+
+                    if with_tmp and arg1 != "IN":
+                        dst += ">" + ">>" * nesting_depth + "<<[>>+<<-]" * nesting_depth + "<" 
                 elif arg0 == "OUT":
                     if arg1 == "IN":
                         dst += ">,.[-]<"
