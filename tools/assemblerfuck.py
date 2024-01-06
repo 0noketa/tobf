@@ -12,12 +12,18 @@
 #   instructions below require temporaries.
 #     "IF", "DO", "MOV OUT, IN"
 #
+# additional instructions:
+#  BREAK          exit from current DO block.
+#  BREAK <VALUE>  exit from DO blocks.
+#
 # AssemblerFuck
 # https://esolangs.org/wiki/AssemblerFuck
 # AssemblerFuck++
 # https://esolangs.org/wiki/AssemblerFuck%2B%2B
 import sys
 import re
+
+ENABLE_EXTENSIONS = True
 
 
 def getnum(a: list[str], idx=0):
@@ -95,13 +101,24 @@ def compile(src):
             elif cmd == "DO":
                 nesting_depth = len([1 for i in blocks if i == "DO"])
                 arg0 = getnum(args)
-                # v0 _ v1 i v2 j v3 k
-                dst += ">>>" + ">>" * nesting_depth + "<<[>>+<<-]" * nesting_depth 
+                # v0 _ v1 _ v2 i v3 j
+                dst += ">>>>>" + ">>" * nesting_depth + "<<[>>+<<-]" * nesting_depth 
                 if arg0 == 0:
-                    dst += "+[<<<"
+                    dst += "+[<<<<<"
                 else:
-                    dst += "+" * arg0 + "[-<<<"
+                    dst += "+" * arg0 + "[-<<<<<"
                 blocks.append("DO")
+            elif cmd == "BREAK" and ENABLE_EXTENSIONS:
+                nesting_depth = len([1 for i in blocks if i == "DO"])
+                break_depth = 1
+
+                if len(args) > 0:
+                    break_depth = getnum(args, 0)
+
+                if break_depth > nesting_depth:
+                    break_depth = nesting_depth
+
+                dst += ">>>" + ">>[-]" * break_depth + "<<" * break_depth + "<<<"
             elif cmd == "END":
                 nesting_depth = len([1 for i in blocks if i == "DO"])
                 block = blocks.pop()
@@ -111,8 +128,8 @@ def compile(src):
                 elif block == "IF":
                     dst += ">]<"
                 elif block == "DO":
-                    dst += ">>>]" + ">>[<<+>>-]" * nesting_depth + "<<" * nesting_depth 
-                    dst += "<<<"    
+                    dst += ">>>>>]" + ">>[<<+>>-]" * nesting_depth + "<<" * nesting_depth 
+                    dst += "<<<<<"    
             elif cmd == "MOV":
                 arg0 = getreg(args, 0, istarget=True)
                 arg1 = getreg(args, 1)
@@ -124,7 +141,7 @@ def compile(src):
 
                 if arg0 == "LEFT":
                     if with_tmp and arg1 != "IN":
-                        dst += ">" + ">>[<<+>>-]" * nesting_depth + "<<" * nesting_depth + "<" 
+                        dst += ">>>" + ">>[<<+>>-]" * nesting_depth + "<<" * nesting_depth + "<<<" 
 
                     dst += "<<" if with_tmp else "<"
                     if arg1 == "IN":
@@ -137,7 +154,7 @@ def compile(src):
                         dst += "<<" if with_tmp else "<"  # required?
 
                     if with_tmp and arg1 != "IN":
-                        dst += ">" + ">>" * nesting_depth + "<<[>>+<<-]" * nesting_depth + "<" 
+                        dst += ">>>" + ">>" * nesting_depth + "<<[>>+<<-]" * nesting_depth + "<<<" 
                 elif arg0 == "OUT":
                     if arg1 == "IN":
                         dst += ">,.[-]<"
