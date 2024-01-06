@@ -1,0 +1,24 @@
+ADD 48
+MOV RIGHT, P
+ADD 10
+MOV RIGHT, P
+ADD 65
+MOV LEFT, P
+MOV LEFT, P
+
+DO 3
+    MOV OUT, P
+    ADD 1
+    DO 4
+        MOV RIGHT, P
+        MOV RIGHT, P
+        DO 2
+            MOV OUT, P
+            ADD 1
+        END
+        MOV LEFT, P
+        MOV OUT, P
+        MOV LEFT, P
+    END
+END
+

@@ -3,7 +3,6 @@
 # limitation:
 #   OBJECT/TARGET validation is AssemblerFuck++
 #   implements "MOV LEFT|RIGHT, IN" as "<,>|>,<"
-#   "DO" is not implemented
 #
 #   maybe Helloworld is incorrect
 #
@@ -12,7 +11,6 @@
 #
 #   instructions below require temporaries.
 #     "IF", "DO", "MOV OUT, IN"
-#   every level of nested "DO" should own different temporary.
 #
 # AssemblerFuck
 # https://esolangs.org/wiki/AssemblerFuck
@@ -55,18 +53,8 @@ def uses_tmp(cmd, args):
 
     return False
 
-def uses_inf_loop(cmd, args):
-    if cmd == "DO":
-        arg0 = getnum(args, 0)
-
-        return arg0 == 0
-
-    return False
-
-
 def compile(src):
     with_tmp = False
-    with_inf_loop = False
     src2 = []
     for line in src:
         line: str = line
@@ -78,9 +66,6 @@ def compile(src):
 
             if not with_tmp and uses_tmp(cmd, args):
                 with_tmp = True
-
-            if not with_inf_loop and uses_inf_loop(cmd, args):
-                with_inf_loop = True
         except:
             sys.stderr.write(f"error: {line}\n")
             break
@@ -108,16 +93,26 @@ def compile(src):
                 dst += "[>+>>+<<<-]>[<+>-]+>>" + "-" * arg0 + "[<<->>[-]]<<[[-]<"
                 blocks.append("IF")
             elif cmd == "DO":
+                nesting_depth = len([1 for i in blocks if i == "DO"])
                 arg0 = getnum(args)
-                # v _ v2 _
-                dst += ">" + "+" * arg0 + "[-<"
+                # v0 _ v1 i v2 j v3 k
+                dst += ">>>" + ">>" * nesting_depth + "<<[>>+<<-]" * nesting_depth 
+                if arg0 == 0:
+                    dst += "+[<<<"
+                else:
+                    dst += "+" * arg0 + "[-<<<"
                 blocks.append("DO")
             elif cmd == "END":
+                nesting_depth = len([1 for i in blocks if i == "DO"])
                 block = blocks.pop()
+    
                 if block == "UNTIL":
                     dst += "]"
-                elif block in ["IF", "DO"]:
+                elif block == "IF":
                     dst += ">]<"
+                elif block == "DO":
+                    dst += ">>>]" + ">>[<<+>>-]" * nesting_depth + "<<" * nesting_depth 
+                    dst += "<<<"    
             elif cmd == "MOV":
                 arg0 = getreg(args, 0, istarget=True)
                 arg1 = getreg(args, 1)
