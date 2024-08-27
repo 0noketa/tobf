@@ -3,8 +3,8 @@ c d dpt cond cond2
 loadas conf consts
 conf:def '!  BF_EOF
 
-loadas mem ptrmem 256
-loadas src ptrmem 256 1 disable_skip
+loadas mem ptrmem 1024
+loadas src ptrmem 4096 1 disable_skip
 
 :main
     load_src

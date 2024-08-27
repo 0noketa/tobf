@@ -1,0 +1,5 @@
+import erp_puts
+
+: main
+    "Hello, World!" puts ln
+    ;

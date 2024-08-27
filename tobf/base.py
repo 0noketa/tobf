@@ -99,6 +99,7 @@ class SubsystemBase:
         self._consts = {}
         self._enums = {}
         self._fixed = False
+        self._is_constant_sub = False
         self._vars = []
         self._var_stack = {}
         self._pub_vars = []
@@ -116,9 +117,16 @@ class SubsystemBase:
     def name(self):
         return self._name
     def set_base(self, addr: int):
-        if self._address != None:
+        if self._address is not None and (self._size > 0 or not self._fixed):
             raise Exception(f"can not move subsystem instance")
         self._address = addr
+    def def_as_const_sub(self, _is_constant_sub=True):
+        self._is_constant_sub = _is_constant_sub
+        self._size = 0
+        self._address = 0
+        self._fixed = True
+    def is_const_sub(self):
+        return self._is_constant_sub
     def fix(self, _fixed=True):
         self._fixed = _fixed
     def resize(self, size: int):

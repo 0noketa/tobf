@@ -8,8 +8,8 @@
 #   initializes for n cells
 # init n m
 #   initializes for n cells with m pointers
-# init n m skippable
-#   prepares structure for skip
+# init n m disable_skip
+#   avoids to prepare structure for skip
 # clean
 #   cleans all
 # @set imm ptr_idx
@@ -26,9 +26,6 @@
 # @r_copy ptr_idx ...out_vars
 # @w_move in_var ptr_idx
 # @w_copy in_var ptr_idx
-# @enable_skip
-#   enables specified code for skipping this structure. 
-# @disable_skip
 
 from typing import cast, Union, List, Tuple, Set, Dict, Type, Callable
 import sys
@@ -53,10 +50,9 @@ class Subsystem_PtrMem(SubsystemBase):
             self.n_ptrs_ = 1
 
         self.cell_size_ = self.n_ptrs_ + 2
-        self.skip_enabled = False
+        self.skip_enabled = len(args) <= 2 or args[2] != "disable_skip"
 
         self.resize((self.mem_size_ + 1) * self.cell_size_)
-
         self.fix()
         instantiate(self.size(), self)
 
@@ -74,6 +70,9 @@ class Subsystem_PtrMem(SubsystemBase):
         return ["first", "last"]
 
     def put_init(self, args: List[str]):
+        if not self.skip_enabled:
+            return
+
         self._main.put_address_selector(self.offset())
         self._main.put(">" * (self.cell_size_ - 2))
 
@@ -109,14 +108,18 @@ class Subsystem_PtrMem(SubsystemBase):
         if len(args) > 0 and "fast" in args:
             return
 
-        # 0 0 v0 0  p1 q1 v1 1  0 0 0 0
-        self._main.put_at(self.offset(),
-                ">" * (self.cell_size_ * 2 - 1)
-                + "[" + (">" * self.cell_size_) + "]"
-                + "<" * self.cell_size_
-                + "[-<[-]" + ("<[-]" * self.n_ptrs_) + "<]"
-                + "<[-]"
-                + "<" * self.n_ptrs_)
+        if self.skip_enabled:
+            # 0 0 v0 0  p1 q1 v1 1  0 0 0 0
+            self._main.put_at(self.offset(),
+                    ">" * (self.cell_size_ * 2 - 1)
+                    + "[" + (">" * self.cell_size_) + "]"
+                    + "<" * self.cell_size_
+                    + "[-<[-]" + ("<[-]" * self.n_ptrs_) + "<]"
+                    + "<[-]"
+                    + "<" * self.n_ptrs_)
+        else:
+            self._main.put_at(self.offset(),
+                    "ptrmem:clean without enable_skip is not implemented")
 
     def can_skip(self) -> bool:
         return self.skip_enabled
@@ -163,8 +166,7 @@ class Subsystem_PtrMem(SubsystemBase):
     def has_ins(self, name: str, args: list) -> bool:
         return (name in [
                 "init", "clean",
-                "@clear",
-                "@enable_skip", "@disable_skip"]
+                "@clear"]
             or len(args) >= 1
                 and name in [
                     "@set", "@add", "@sub",
@@ -189,16 +191,6 @@ class Subsystem_PtrMem(SubsystemBase):
 
         if name == "clean":
             raise Exception(f"cant use [ptrmem:clean] directly")
-
-            return
-
-        if name == "@enable_skip":
-            self.skip_enabled = True
-
-            return
-
-        if name == "@disable_skip":
-            self.skip_enabled = False
 
             return
 

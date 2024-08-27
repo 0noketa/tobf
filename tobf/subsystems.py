@@ -190,7 +190,7 @@ class Subsystem_ConstSet(SubsystemBase):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
-        self.resize(0)
+        self.def_as_const_sub()
         instantiate(0, self)
 
         self.add_ins(Instruction_DefineConst("const", self))
@@ -202,7 +202,7 @@ class Subsystem_Consts(SubsystemBase):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
-        self.resize(0)
+        self.def_as_const_sub()
         instantiate(0, self)
 
         self.add_ins(Instruction_DefineConst("def", self))
@@ -223,7 +223,7 @@ class Subsystem_Enums(SubsystemBase):
         super().__init__(main, name)
         self._main = cast(Tobf, self._main)
 
-        self.resize(0)
+        self.def_as_const_sub()
         instantiate(0, self)
 
         self.add_ins(Instruction_DefineEnum("def", self))

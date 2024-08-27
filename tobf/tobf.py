@@ -10,8 +10,11 @@
 #     variables for workspace should be 0 when registered/unregistered.
 #     no workspace can be modified explicitly.
 # syntax:
-#   program: var_decl "\n" instructions "end" "\n"
-#   var_decl: id (" " val)*
+#   program: var_decl "\n" (|macro_def*) (|main) (|macro_def*) "end" "\n"
+#   var_decl: id (" " id)*
+#   macro_def: ":"  macro_decl "\n" instructions
+#   macro_decl: id var_decl
+#   main: instructions
 #   instructions: instruction*
 #   instruction: qid (" " val)* "\n" | qid (|" " space_separated) "\n"
 #   val: digits | "'" | "'" char | qid | sign qid
@@ -189,8 +192,8 @@
 #   injects compiled ArrowFuck code.
 # include_4dchess file_name mem_size0 mem_size1 mem_size2 mem_size3 ...io_vars
 #   injects compiled 4DChess code.
-# include_c file_name stack_size function_name ...in_vars out_var
-#   uses C function.
+# include_bfa file_name ...io_vars
+#   behavior will be changed
 # write_lit ...literals
 # writeln_lit ...literals
 #   required tmps: 1 or 2
@@ -208,7 +211,6 @@ from base import Subsystem, split, split_list, separate_sign, calc_small_pair, c
 
 from brainfuck_with_mdm import ArrowFuck, FDChess
 from bfa import Bfa
-from c2bf import C2bf
 
 
 class Tobf:
@@ -261,6 +263,9 @@ class Tobf:
         base = len(self.vars_)
 
         for sub in self.subsystem_instances_:
+            if sub.is_const_sub():
+                continue
+
             addr = sub.offset(0)
 
             if addr - base >= size:
@@ -300,13 +305,21 @@ class Tobf:
         template = self.get_template(name)
 
         def instantiate(size: int, instance: Subsystem = None, args: List[str] = None):
-            addr = self.addressof_free_area(size)
+            if instance.is_const_sub():
+                self.subsystem_instances_.insert(0, instance)
+                addr = 0
+            else:
+                if instance._size is None:
+                    instance.resize(size)
 
-            self.subsystem_instances_.append(instance)
+                addr = self.addressof_free_area(size)
+                instance.set_base(addr)
+
+                self.subsystem_instances_.append(instance)
+
+                self.subsystem_instances_.sort()
+
             self.subsystem_instances_by_name_[alias] = instance
-
-            instance.set_base(addr)
-            self.subsystem_instances_.sort()
 
             if instance != None:
                 instance.put_init(args)
@@ -475,6 +488,10 @@ class Tobf:
         current_addr = 0
 
         for sub in self.subsystem_instances_:
+            if sub.is_const_sub():
+                continue
+
+            self.put(f"sel sub {sub._name}")
             self.put(">" * (sub.offset(0) - current_addr))
             current_addr = sub.offset(0)
 
@@ -501,6 +518,10 @@ class Tobf:
         current_addr = 1
 
         for sub in self.subsystem_instances_:
+            if sub.is_const_sub():
+                i += 1
+                continue
+
             current_addr = sub.offset(0)
 
             if sub.size() == 0:
@@ -515,6 +536,9 @@ class Tobf:
         current_addr = target_addr
 
         for sub in reversed(self.subsystem_instances_[:i]):
+            if sub.is_const_sub():
+                continue
+
             next_addr = sub.offset(0) + sub.size()
             self.put("<" * (current_addr - next_addr))
 
@@ -1592,43 +1616,32 @@ class Tobf:
 
             return True
 
-        if name == "include_c":
-            if len(args) < 4:
-                raise Exception(f"[include_c/{len(args)}] is not implemented")
-
-            c_file_name = args[0]
-            c_stack_size = int(args[1])
-            c_func_name = args[2]
-            c_func_args_and_result = args[3:]
-            c_func_args = c_func_args_and_result[:-1]
-
-            shared_vars = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
+        if name == "include_bfa":
+            bfa_file_name = args[0]
+            shared_vars = args[1:]
 
             try:
-                c = C2bf(c_file_name, shared_vars=shared_vars, stack_size=c_stack_size)
-                c_func_args2 = [f"__tobf_shared{i}" for i in range(len(c_func_args))]
-                c_startup = f"""{{ __tobf_shared0 = {c_func_name}({",".join(c_func_args2)}); }}"""
-                bf, c_mem_size = c.compile_to_bf(c_startup)
-                c_base_ptr = self.addressof_free_area(c_mem_size)
+                tmp_file = io.StringIO()
+                bfa = Bfa.from_filename(bfa_file_name)
+                bfa_mem_size = bfa.compile(tmp_file)
+                bfa_base_ptr = self.addressof_free_area(bfa_mem_size)
+                bf = tmp_file.getvalue()
             except Exception:
-                raise Exception(f"failed to open {c_file_name}")
+                raise Exception(f"failed to open {bfa_file_name}")
 
-            for i in range(len(c_func_args)):
-                arg = c_func_args[i]
+            for i in range(len(shared_vars)):
+                arg = shared_vars[i]
+                addr = self.addressof(arg)
 
-                if self.is_var(arg):
-                    addr = self.addressof(arg)
+                self.put_move(addr, [f"+#{bfa_base_ptr + i}"])
 
-                    self.put_move(addr, [f"+#{c_base_ptr + i}"])
-                else:
-                    v = self.valueof(arg)
-                    self.put_at(c_base_ptr + i, "+" * v)
+            self.put_at(bfa_base_ptr, bf)
 
-            self.put_at(c_base_ptr, bf)
+            for i in range(len(shared_vars)):
+                arg = shared_vars[i]
+                addr = self.addressof(arg)
 
-            addr = self.addressof(c_func_args_and_result[-1])
-
-            self.put_move(c_base_ptr, [f"+#{addr}"])
+                self.put_move(bfa_base_ptr + i, [f"+#{addr}"])
 
             return True
 
